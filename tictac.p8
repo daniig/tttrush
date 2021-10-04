@@ -1,6 +1,7 @@
 pico-8 cartridge // http://www.pico-8.com
 version 32
 __lua__
+-- state def./constants
 -- mejorar sombras
 -- agregar calculo de nivel y barra gui
 -- ajustar curvas diff y rate
@@ -10,6 +11,18 @@ __lua__
 -- probar con alguien,anadir efectos,anadir menu,publicar
 gs=nil -- game state
 ms=nil -- menu state
+-- implicit game state: variables that can be fully derived from
+-- 	the current game state, cached here and globally accessible.
+--	they are mostly used by the game drawing routines.
+-- 	should be written by update_gs and read only by everyone else.
+--  given lua's behaviour, this list doesn't even need to be
+--  here, but i'm using it as a reminder of the things that are
+--  computed by update_gs that are used somewhere else
+current_move=nil
+new_board=nil
+player_win_line=nil
+cpu_win_line=nil
+new_phase=nil
 -- constants
 tile_side=33
 screen_side=128
@@ -54,6 +67,7 @@ cursor_b_color=14
 shadow_brush=5
 x_brush=4
 o_brush=3
+hi_brush=6 -- brush for drawing highlights
 piece_shadows=true
 
 function has_value(t,v) -- table,value
@@ -79,7 +93,7 @@ function make_gs(
 	cursor_pos, -- .x and .y
 	board,						-- 3x3,nil,"p"or"c"
 	diff,							-- 0..255
-	timer,						-- 0..255
+	timer,						-- round timer (0..255)
 	phase,					 -- one of phases
 	rate,						 -- timer rate
 	rounds,				 -- num.of played rounds
@@ -239,6 +253,7 @@ function irnd(n)
 	return flr(rnd(n))
 end
 -->8
+-- logic
 lines={
  {{x=1,y=1},{x=2,y=1},{x=3,y=1}},
  {{x=1,y=1},{x=2,y=2},{x=3,y=3}},
@@ -405,13 +420,13 @@ function get_cpu_move(board,diff)
 	return nil
 end
 
-function next_phase(phase,moved,timer,n_board,ptime,btn_pressed,cpu_won,player_won)
+function next_phase(phase,moved,timer,new_board,ptime,btn_pressed,cpu_won,player_won)
  if phase=="player" then
   if player_won then 
    return "won"
   elseif timer<=0 then
   	return "lost"
-  elseif board_full(n_board) then
+  elseif board_full(new_board) then
    return "tie_player"
   else
 		 return t(moved,"cpu","player")
@@ -419,7 +434,7 @@ function next_phase(phase,moved,timer,n_board,ptime,btn_pressed,cpu_won,player_w
 	elseif phase=="cpu" then
 	 if cpu_won then
 	  return "lost"
-	 elseif board_full(n_board) then
+	 elseif board_full(new_board) then
 	  return "tie_cpu"
 		else
 			return t(moved,"player","cpu")
@@ -517,58 +532,48 @@ function update_gs(gs,input)
 		t(control_rz,
 		  keys2cursor_pos(input),
 		  get_new_curpos(gs.cursor_pos,input))
-	local move
 	if gs.phase=="player" then
-		move=get_player_move(gs.cursor_pos,gs.board,input)
-	elseif -- a little delay
-	(gs.phase=="cpu" and
-	 (gs.timer<240 
-	  or gs.ptime>60)) then
-	 move=get_cpu_move(gs.board,gs.diff)
+		current_move=get_player_move(gs.cursor_pos,gs.board,input)
+	elseif (gs.phase=="cpu" and (gs.timer<240 or gs.ptime>60)) then -- a little delay
+		current_move=get_cpu_move(gs.board,gs.diff)
+	else
+		current_move=nil
 	end
-	local n_board=
-		put_mark(gs.board,gs.phase,move)
-	local player_win_line=check_won(n_board,player_mark)
-	local cpu_win_line=check_won(n_board,cpu_mark)
-	local n_phase=
-		next_phase(gs.phase,move!=nil,
-			gs.timer,n_board,gs.ptime,
-			input.btnp_🅾️ or input.btnp_❎,
-			cpu_win_line!=nil,player_win_line!=nil)
-	local game_start=
-		(n_phase!=gs.phase) and
-		(gs.phase=="menu" or
-		 gs.phase=="lost");
+	new_board=put_mark(gs.board,gs.phase,current_move)
+	player_win_line=check_won(new_board,player_mark)
+	cpu_win_line=check_won(new_board,cpu_mark)
+	new_phase=next_phase(
+		gs.phase,current_move!=nil,
+		gs.timer,new_board,gs.ptime,
+		input.btnp_🅾️ or input.btnp_❎,
+		cpu_win_line!=nil,player_win_line!=nil)
+	local game_start=(new_phase!=gs.phase) and (gs.phase=="menu" or gs.phase=="lost");
 	local round_restart=
-	 (n_phase!=gs.phase) and
-	 (gs.phase=="won" or
-	  gs.phase=="lost" or
-	  gs.phase=="tie_player" or
-	  gs.phase=="tie_cpu");
-	local score_inc=
-		calc_score_inc(gs.timer)
+		(new_phase!=gs.phase) and
+		(gs.phase=="won" or
+		 gs.phase=="lost" or
+		 gs.phase=="tie_player" or
+		 gs.phase=="tie_cpu");
+	local score_inc=calc_score_inc(gs.timer)
 	local new_score=
-		t(gs.phase=="player" and move!=nil,
+		t(gs.phase=="player" and current_move!=nil,
 		  gs.score+score_inc,
 		  gs.score)
 	local new_blinky=
-		t(gs.phase=="player" and move!=nil,
-		  make_blinky(move,tostr(score_inc),0),
+		t(gs.phase=="player" and current_move!=nil,
+		  make_blinky(current_move,tostr(score_inc),0),
 		  nil)
 	return make_gs(
 		n_cpos,
-		t(
-			round_restart,
-			make_empty_board(),
-			n_board),
+		t(round_restart,make_empty_board(),new_board),
 		next_diff(gs.diff,round_restart),
-		next_timer(gs.timer,move,gs.rate,gs.phase),
-		n_phase,
+		next_timer(gs.timer,current_move,gs.rate,gs.phase),
+		new_phase,
 		next_rate(gs.rate,round_restart,game_start),
 		gs.rounds+t(round_restart,1,0),
-		next_ptime(gs.ptime,gs.phase!=n_phase,false),
-		next_ptime(gs.ptimec,gs.phase!=n_phase,true),
-		next_note(gs.note,move),
+		next_ptime(gs.ptime,gs.phase!=new_phase,false),
+		next_ptime(gs.ptimec,gs.phase!=new_phase,true),
+		next_note(gs.note,current_move),
 		gs.phase,
 		t(new_blinky==nil,
 		  t(gs.blinky==nil,
@@ -621,6 +626,7 @@ function _update()
 	end
 end
 -->8
+-- drawing
 function rect2(x,y,w,h,c)
 	rect(x,y,x+w,y+h,c)
 end
@@ -712,42 +718,50 @@ function draw_cursor(cpos,phase,ptime)
 		color_)
 end
 
-function draw_x(i,j,dseed)
+function draw_x(i,j,dseed,highlight)
 	local x0=tile_off_x+(i-1)*tile_side+1
- local y0=tile_off_y+(j-1)*tile_side+1
- local backup_seed=rnd()
- if piece_shadows then
-  srand(dseed)
-	 draw_figure(f_ecks_0,x0+1,y0+1,shadow_brush)
-	 draw_figure(f_ecks_1,x0+1,y0+1,shadow_brush)
- end
- srand(dseed)
- draw_figure(f_ecks_0,x0,y0,x_brush)
- draw_figure(f_ecks_1,x0,y0,x_brush)
- srand(backup_seed)
+	local y0=tile_off_y+(j-1)*tile_side+1
+	local backup_seed=rnd()
+	if piece_shadows then
+		srand(dseed)
+		draw_figure(f_ecks_0,x0+1,y0+1,shadow_brush)
+		draw_figure(f_ecks_1,x0+1,y0+1,shadow_brush)
+	end
+	srand(dseed)
+	draw_figure(f_ecks_0,x0,y0,t(highlight,hi_brush,x_brush))
+	draw_figure(f_ecks_1,x0,y0,t(highlight,hi_brush,x_brush))
+	srand(backup_seed)
 end
 
-function draw_o(i,j,dseed)
+function draw_o(i,j,dseed,highlight)
 	local x0=tile_off_x+(i-.6)*tile_side
- local y0=tile_off_y+(j-.6)*tile_side
- local backup_seed=rnd()
- if piece_shadows then
-  srand(dseed)
-  draw_figure(f_circle,x0+1,y0+1,shadow_brush)
- end
- srand(dseed)
- draw_figure(f_circle,x0,y0,o_brush)
- srand(backup_seed)
+	local y0=tile_off_y+(j-.6)*tile_side
+	local backup_seed=rnd()
+	if piece_shadows then
+		srand(dseed)
+		draw_figure(f_circle,x0+1,y0+1,shadow_brush)
+	end
+	srand(dseed)
+	draw_figure(f_circle,x0,y0,t(highlight,hi_brush,o_brush))
+	srand(backup_seed)
 end
 
-function draw_pieces(board,dseed)
+function draw_pieces(board,dseed,win_line,ptimer)
 	for i=1,3 do
 		for j=1,3 do
 			local piece=board[i][j]
+			local highlight=false
+			if win_line!=nil then
+				for p in all(win_line) do
+					if p.x==i and p.y==j and (ptimer&0x01==0x01) and (ptimer<60) then
+						highlight=true
+					end
+				end
+			end
 			if piece=="❎" then
-			 draw_x(i,j,dseed+i*j)
+			 	draw_x(i,j,dseed+i*j,highlight)
 			elseif piece=="🅾️" then
-				draw_o(i,j,dseed+i*j)
+				draw_o(i,j,dseed+i*j,highlight)
 			end
 		end
 	end
@@ -877,7 +891,8 @@ function _draw()
 		or gs.phase=="player" then
 			draw_cursor(gs.cursor_pos,gs.phase,gs.ptimec)
 		end
-		draw_pieces(gs.board,gs.dseed)
+		local win_line=t(player_win_line==nil,cpu_win_line,player_win_line)
+		draw_pieces(gs.board,gs.dseed,win_line,gs.ptime)
 		draw_hilite(gs.movehlite)
 		if gs.blinky!=nil then
 			draw_blinky(gs.blinky,gs.ptimec&0x01)
@@ -893,6 +908,7 @@ function _draw()
 	end
 end
 -->8
+-- sfx
 num_notes=8
 move_ding_ch=0
 move_sfx_num=2 -- 0 and 1
@@ -918,10 +934,10 @@ end
 __gfx__
 0000000099999999bbbbbbbb00000000000000000000000000000000000000000000000700000007000000000000000000000000000000000000000000000000
 0000000099999999bbbbbbbb00000000000000000000000000000000000000000000000700000007000000000000000000000000000000000000000000000000
-0070070099999999bbbbbbbb00099000000bb0000005500000000000000000000000000700000007000000000000000000000000000000000000000000000000
-0007700099999999bbbbbbbb0099990000bbbb000055550000000000000000000000000700000007000000000000000000000000000000000000000000000000
-0007700099999999bbbbbbbb0099990000bbbb000055550000000000000000000777777707777777000000000000000000000000000000000000000000000000
-0070070099999999bbbbbbbb00099000000bb0000005500000000000000000007777777777777777000000000000000000000000000000000000000000000000
+0070070099999999bbbbbbbb00099000000bb0000005500000077000000000000000000700000007000000000000000000000000000000000000000000000000
+0007700099999999bbbbbbbb0099990000bbbb000055550000777700000000000000000700000007000000000000000000000000000000000000000000000000
+0007700099999999bbbbbbbb0099990000bbbb000055550000777700000000000777777707777777000000000000000000000000000000000000000000000000
+0070070099999999bbbbbbbb00099000000bb0000005500000077000000000007777777777777777000000000000000000000000000000000000000000000000
 0000000099999999bbbbbbbb00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 0000000099999999bbbbbbbb00000000000000000000000000000000000000000700700707007007000000000000000000000000000000000000000000000000
 00000000700700007007000000000000000000000000000000000000000000000700700707007007000000000000000000000000000000000000000000000000
