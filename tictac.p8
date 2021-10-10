@@ -69,6 +69,9 @@ x_brush=4
 o_brush=3
 hi_brush=6 -- brush for drawing highlights
 piece_shadows=true
+max_int=32767
+ai_levelup_indicator_cooldown=30
+ai_levelup_spr=20
 
 function has_value(t,v) -- table,value
  for i,val in ipairs(t) do
@@ -91,20 +94,21 @@ end
 
 function make_gs(
 	cursor_pos, -- .x and .y
-	board,						-- 3x3,nil,"p"or"c"
-	diff,							-- 0..255
-	timer,						-- round timer (0..255)
-	phase,					 -- one of phases
-	rate,						 -- timer rate
-	rounds,				 -- num.of played rounds
-	ptime,						--	time elapsed in current phase (max 32767)
-	ptimec,					--	like ptime but cyclic
-	note,							-- last note played
+	board,		-- 3x3,nil,"p"or"c"
+	diff,		-- 0..255
+	timer,		-- round timer (0..255)
+	phase,		-- one of phases
+	rate,		-- timer rate
+	rounds,		-- num.of played rounds
+	ptime,		-- time elapsed in current phase (max 32767 frames)
+	ptimec,		-- like ptime but cyclic
+	note,		-- last note played
 	prev_phase, -- previous phase
-	blinky,				 -- flashy score text
+	blinky,		-- flashy score text
 	score,
-	dseed,						--	piece drawing rnd seed
-	movehlite			-- line to be highlighted
+	dseed,		-- piece drawing rnd seed
+	rtime,    	-- time elapsed in current round (max 32767 frames)
+	first_round -- first round of the game after main menu
 )
  --rudimentary typechecking
  if type(cursor_pos)!="table" then error=1 end
@@ -125,7 +129,8 @@ function make_gs(
  if blinky!=nil and (blinky.pos.x==nil or blinky.pos.y==nil or blinky.txt==nil or blinky.off==nil) then error=12 end
  if type(score)!="number" then error=13 end
  if type(dseed)!="number" then error=14 end
- if type(movehlite)!="table" and movehlite!=nil then error=15 end
+ if type(rtime)!="number" then error=15 end
+ if type(first_round)!="boolean" then error=16 end
  --	
 	return {
 		cursor_pos=cursor_pos,
@@ -142,7 +147,8 @@ function make_gs(
 		blinky=blinky,
 		score=score,
 		dseed=dseed,
-		movehlite=movehlite
+		rtime=rtime,
+		first_round=first_round
 	}
 end
 
@@ -163,7 +169,8 @@ function make_init_gs()
 			nil,
 			0,
 			0,
-			nil
+			0,
+			true
 		)
 end
 
@@ -479,7 +486,7 @@ end
 function next_ptime(ptime,rst,cycle)
 	return t(rst,
 	         0,
-	         t(ptime<32766,
+	         t(ptime<max_int,
 	           ptime+1,
 	           t(cycle,
 	             0,
@@ -589,9 +596,13 @@ function update_gs(gs,input)
 		t(gs.ptimec&0x02==0x02,
 		  gs.dseed+1,
 		  gs.dseed),
-		t(player_win_line!=nil,
-		  player_win_line,
-		  cpu_win_line)
+		t(round_restart,
+		  0,
+		  t(gs.rtime<max_int,gs.rtime+1,gs.rtime)),
+		t(gs.phase=="won" or gs.phase=="lost" or
+		  gs.phase=="tie_player" or gs.phase=="tie_cpu",
+		  false,
+		  gs.first_round)
 	)
 end
 
@@ -887,6 +898,14 @@ function draw_hilite(lin)
  end
 end
 
+function draw_ai_levelup_indicator(rtime, first_round)
+	if rtime < ai_levelup_indicator_cooldown
+	   and odd(rtime)
+	   and not first_round then
+		spr(ai_levelup_spr, r_sidebar_x+2, sidebar_y+sidebar_h/8)
+	end
+end
+
 function _draw()
 	cls(1)
 	if ms.phase=="main" then
@@ -903,6 +922,7 @@ function _draw()
 			draw_blinky(gs.blinky,gs.ptimec&0x01)
 		end
 		draw_timer(gs.timer)
+		draw_ai_levelup_indicator(gs.rtime, gs.first_round)
 		draw_ai_level(gs.diff)
 		draw_score(gs.score)
 		draw_usr_msg(gs.phase,gs.rounds,gs.ptimec)
