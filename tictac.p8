@@ -168,15 +168,16 @@ function make_init_gs()
 			"cpu",
 			nil,
 			0,
-			0,
+			flr(rnd()*30000),
 			0,
 			true
 		)
 end
 
 function make_ms(
-	phase,					 -- one of m_phases
-	ptimec 					--	cyclic phase timer
+	phase,		-- one of m_phases
+	ptimec,		-- cyclic phase timer
+	dseed 		-- drawing rnd seed
 )
  --rudimentary typechecking
  if type(phase)!="string" then error=128+5 end
@@ -184,16 +185,18 @@ function make_ms(
  	error=128+6
  	printh(phase)
  end
- if type(ptimec)!="number" then error=128+9 end
+ if type(ptimec)!="number" then error=128+7 end
+ if type(dseed)!="number" then error=128+8 end
  --	
 	return {
 		phase=phase,
-		ptimec=ptimec
+		ptimec=ptimec,
+		dseed=dseed
 	}
 end
 
 function make_init_ms()
- return make_ms("main",0)
+ return make_ms("main",0,flr(rnd()*30000))
 end
 
 function _init()
@@ -632,7 +635,10 @@ function update_ms(ms,gs,input)
 	 	and (input.btnp_❎ or input.btnp_🅾️))
 	return make_ms(
 		next_phase,
-		next_ptime(ms.ptimec,false,true))
+		next_ptime(ms.ptimec,false,true),
+		t(ms.ptimec&0x02==0x02,
+		  ms.dseed+1,
+		  ms.dseed))
 end
 
 function _update()
@@ -656,58 +662,72 @@ function rectfill2(x,y,w,h,c)
 	rectfill(x,y,x+w,y+h,c)
 end
 
+-- vector figure table format: f[stroke][point in stroke][coord (x or y) of point]
+
 function make_circle(npts,r)
- local f={npts=npts,pts={}}
-        for p=0,npts-2 do
-                f.pts[p]={x=r*cos(p/(npts-1)),
-                         y=r*sin(p/(npts-1))} 
-        end
- f.pts[npts-1]={x=f.pts[0].x,
-                y=f.pts[0].y}
- return f
+	local f={}
+	local stroke={}
+	for p=1,npts-1 do
+		add(stroke,{r*cos((p-1)/(npts-1)),r*sin((p-1)/(npts-1))})
+	end
+	add(stroke,{r,0})
+	add(f,stroke)
+ 	return f
 end
 
 f_circle=make_circle(12,tile_side*0.35)
-f_ecks_0={npts=2,pts={[0]={x=0,y=0},{x=23,y=23}}}
-f_ecks_1={npts=2,pts={[0]={x=23,y=0},{x=0,y=23}}}
+f_ecks={
+	{{0,0},{23,23}},
+	{{23,0},{0,23}}
+}
+f_title_line1={
+	{{2,8},{32,5}},		-- T
+	{{13,7},{13,26}},
+	{{25,14},{25,25}},	-- I
+	{{43,4},{33,11},{34,20},{44,25}} -- C
+}
 
 -- brush line
 function bline(x0,y0,x1,y1,dd,brush)
- -- dd = brush diameter
- -- brush = brush sprite number
- local dx=x1-x0
- local dy=y1-y0
- local d=sqrt(dx*dx+dy*dy)
- local ns=flr(d/dd) -- num of segments
- local dxs=dx/ns
- local dys=dy/ns
- local x=x0
- local y=y0
- for seg=1,ns do
-  spr(brush,x,y)
-  x+=dxs
-  y+=dys
- end
+	-- dd = brush diameter
+	-- brush = brush sprite number
+	local dx=x1-x0
+	local dy=y1-y0
+	local d=sqrt(dx*dx+dy*dy)
+	local ns=flr(d/dd) -- num of segments
+	local dxs=dx/ns
+	local dys=dy/ns
+	local x=x0
+	local y=y0
+	for seg=1,ns do
+		spr(brush,x,y)
+		x+=dxs
+		y+=dys
+	end
 end
 
 -- draw figure table
 function draw_figure(f,xoff,yoff,brush)
- -- previous random offset x/y
- local prox,proy=irnd(2),irnd(2)
- local rox,roy
- for p=0,f.npts-2 do
-  rox=irnd(2)
-  roy=irnd(2)
-  bline(
-   f.pts[p].x+xoff+prox,
-   f.pts[p].y+yoff+proy,
-   f.pts[p+1].x+xoff+rox,
-   f.pts[p+1].y+yoff+roy,
-   1,brush)
-  prox=rox
-  proy=roy
-  -- print("p"..p,f.pts[p].x+xoff+5,f.pts[p].y+yoff-5,8)
- end 
+	-- previous random offset x/y
+	local prox,proy=irnd(2),irnd(2)
+	local rox,roy
+	for stroke in all(f) do -- p=1,f.npts-1 do
+		n_pts=count(stroke)
+		for p=1,n_pts-1 do
+			rox=irnd(2)
+			roy=irnd(2)
+			bline(
+				stroke[p][1]+xoff+prox,
+				stroke[p][2]+yoff+proy,
+				stroke[p+1][1]+xoff+rox,
+				stroke[p+1][2]+yoff+roy,
+				1,
+				brush)
+			prox=rox
+			proy=roy
+			-- print("p"..p,f.pts[p][1]+xoff+5,f.pts[p][2]+yoff-5,8)
+		end
+	end
 end
 
 function draw_board()
@@ -739,31 +759,19 @@ function draw_cursor(cpos,phase,ptime)
 		color_)
 end
 
-function draw_x(i,j,dseed,highlight)
-	local x0=tile_off_x+(i-1)*tile_side+1
-	local y0=tile_off_y+(j-1)*tile_side+1
+-- i,j = position in board
+function draw_piece(piece,i,j,dseed,highlight)
+	local figure=t(piece=="❎",f_ecks,f_circle)
+	local additional_offset=t(piece=="❎", -1, -.6)
+	local x0=tile_off_x+(i+additional_offset)*tile_side+1
+	local y0=tile_off_y+(j+additional_offset)*tile_side+1
 	local backup_seed=rnd()
 	if piece_shadows and not highlight then
 		srand(dseed)
-		draw_figure(f_ecks_0,x0+1,y0+1,shadow_brush)
-		draw_figure(f_ecks_1,x0+1,y0+1,shadow_brush)
+		draw_figure(figure,x0+1,y0+1,shadow_brush)
 	end
 	srand(dseed)
-	draw_figure(f_ecks_0,x0,y0,t(highlight,hi_brush,x_brush))
-	draw_figure(f_ecks_1,x0,y0,t(highlight,hi_brush,x_brush))
-	srand(backup_seed)
-end
-
-function draw_o(i,j,dseed,highlight)
-	local x0=tile_off_x+(i-.6)*tile_side
-	local y0=tile_off_y+(j-.6)*tile_side
-	local backup_seed=rnd()
-	if piece_shadows and not highlight then
-		srand(dseed)
-		draw_figure(f_circle,x0+1,y0+1,shadow_brush)
-	end
-	srand(dseed)
-	draw_figure(f_circle,x0,y0,t(highlight,hi_brush,o_brush))
+	draw_figure(figure,x0,y0,t(highlight,hi_brush,t(piece=="❎",x_brush,o_brush)))
 	srand(backup_seed)
 end
 
@@ -779,10 +787,8 @@ function draw_pieces(board,dseed,win_line,ptimer)
 					end
 				end
 			end
-			if piece=="❎" then
-			 	draw_x(i,j,dseed+i*j,highlight)
-			elseif piece=="🅾️" then
-				draw_o(i,j,dseed+i*j,highlight)
+			if piece!=nil then
+				draw_piece(piece,i,j,dseed+i*j,highlight)
 			end
 		end
 	end
@@ -887,14 +893,18 @@ function draw_score(score)
 	draw_int_to_chars(score,score_digits)
 end
 
-function draw_menu(ptime)
+function draw_menu(ptime,dseed)
+	local backup_seed=rnd()
+	srand(dseed)
+	draw_figure(f_title_line1,2,32,x_brush)
+	srand(backup_seed)
 	print("tic●tac●toe",40,50,14)
 	print("∧∧ rush ∧∧",40,60,14)
 	if (ptime&0x08==0x08) then
 		print("press 🅾️/❎ to start",35,80,14)
 	end
 	print("hang in against the cpu",20,100,14)
- print("for as long as possible",20,110,14)
+ 	print("for as long as possible",20,110,14)
 end
 
 function draw_hilite(lin)
@@ -918,7 +928,7 @@ end
 function _draw()
 	cls(1)
 	if ms.phase=="main" then
-		draw_menu(ms.ptimec)
+		draw_menu(ms.ptimec,ms.dseed)
 	elseif ms.phase=="playing" then
 		draw_board()
 		if gs.phase=="cpu"
