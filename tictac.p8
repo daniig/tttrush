@@ -179,6 +179,7 @@ end
 function make_ms(
 	phase,		-- one of m_phases
 	ptimec,		-- cyclic phase timer
+	ptime,		-- non-cyclic phase timer
 	dseed 		-- drawing rnd seed
 )
  --rudimentary typechecking
@@ -188,17 +189,19 @@ function make_ms(
  	printh(phase)
  end
  if type(ptimec)!="number" then error=128+7 end
- if type(dseed)!="number" then error=128+8 end
+ if type(ptime)!="number" then error=128+8 end
+ if type(dseed)!="number" then error=128+9 end
  --	
 	return {
 		phase=phase,
 		ptimec=ptimec,
+		ptime=ptime,
 		dseed=dseed
 	}
 end
 
 function make_init_ms()
- return make_ms("main",0,flr(rnd()*30000))
+ return make_ms("main",0,0,flr(rnd()*30000))
 end
 
 function _init()
@@ -493,12 +496,12 @@ function next_rate(rate,round_restart,game_start)
 		t(round_restart,rate*rate_coeff,rate))
 end
 
-function next_ptime(ptime,rst,cycle)
+function next_ptime(ptime,rst,is_cyclic)
 	return t(rst,
 	         0,
 	         t(ptime<max_int,
 	           ptime+1,
-	           t(cycle,
+	           t(is_cyclic,
 	             0,
 	             ptime)))
 end
@@ -638,6 +641,7 @@ function update_ms(ms,gs,input)
 	return make_ms(
 		next_phase,
 		next_ptime(ms.ptimec,false,true),
+		next_ptime(ms.ptime,false,false),
 		t(ms.ptimec&0x02==0x02,
 		  ms.dseed+1,
 		  ms.dseed))
@@ -656,6 +660,10 @@ function _update()
 end
 -->8
 -- drawing
+title_phases={["slow_blink"]=1, ["faster_blink"]=2, ["moving_up"]=3, ["full_title"]=4}
+title_phase_start_time={["slow_blink"]=0, ["faster_blink"]=30, ["moving_up"]=60, ["full_title"]=75}
+title_phase_duration={["slow_blink"]=30, ["faster_blink"]=30, ["moving_up"]=15, ["full_title"]=0}	--	full_title duration is unlimited
+
 function rect2(x,y,w,h,c)
 	rect(x,y,x+w,y+h,c)
 end
@@ -726,24 +734,28 @@ function bline(x0,y0,x1,y1,dd,brush)
 end
 
 -- draw figure table
-function draw_figure(f,xoff,yoff,brush)
+-- blink chance: probability (0.0..1.0) that a certain stroke
+-- will not be drawn (used for special effects)
+function draw_figure(f,xoff,yoff,brush,blink_chance)
 	-- previous random offset x/y
 	local prox,proy=irnd(2),irnd(2)
 	local rox,roy
 	for stroke in all(f) do -- p=1,f.npts-1 do
-		n_pts=count(stroke)
-		for p=1,n_pts-1 do
-			rox=irnd(2)
-			roy=irnd(2)
-			bline(
-				stroke[p][1]+xoff+prox,
-				stroke[p][2]+yoff+proy,
-				stroke[p+1][1]+xoff+rox,
-				stroke[p+1][2]+yoff+roy,
-				1,
-				brush)
-			prox=rox
-			proy=roy
+		if rnd(1)>blink_chance then
+			n_pts=count(stroke)
+			for p=1,n_pts-1 do
+				rox=irnd(2)
+				roy=irnd(2)
+				bline(
+					stroke[p][1]+xoff+prox,
+					stroke[p][2]+yoff+proy,
+					stroke[p+1][1]+xoff+rox,
+					stroke[p+1][2]+yoff+roy,
+					1,
+					brush)
+				prox=rox
+				proy=roy
+			end
 		end
 	end
 end
@@ -786,10 +798,10 @@ function draw_piece(piece,i,j,dseed,highlight)
 	local backup_seed=rnd()
 	if piece_shadows and not highlight then
 		srand(dseed)
-		draw_figure(figure,x0+1,y0+1,shadow_brush)
+		draw_figure(figure,x0+1,y0+1,shadow_brush,0)
 	end
 	srand(dseed)
-	draw_figure(figure,x0,y0,t(highlight,hi_brush,t(piece=="❎",x_brush,o_brush)))
+	draw_figure(figure,x0,y0,t(highlight,hi_brush,t(piece=="❎",x_brush,o_brush)),0)
 	srand(backup_seed)
 end
 
@@ -911,13 +923,46 @@ function draw_score(score)
 	draw_int_to_chars(score,score_digits)
 end
 
-function draw_menu(ptime,dseed)
+function get_title_phase(ptime)
+	if ms.ptime < title_phase_start_time["faster_blink"] then
+		return "slow_blink"
+	elseif ms.ptime < title_phase_start_time["moving_up"] then
+		return "faster_blink"
+	elseif ms.ptime < title_phase_start_time["full_title"] then
+		return "moving_up"
+	else
+		return "full_title"
+	end
+end
+
+function get_title_y_off(title_phase,ptime)
+	assert(title_phases[title_phase]!=nil)
+	local title_max_y_off=20
+	if title_phase=="slow_blink" or title_phase=="faster_blink" then
+		return 0
+	elseif title_phase=="moving_up" then
+		return title_max_y_off*(ptime-title_phase_start_time["moving_up"])/title_phase_duration["moving_up"]
+	else
+		return title_max_y_off
+	end
+end
+
+function draw_menu(title_phase,ptime,ptimec,dseed)
+	assert(title_phases[title_phase]!=nil)
 	local backup_seed=rnd()
 	srand(dseed)
-	draw_figure(f_title_line1,-2,25,title_brush_1)
-	draw_figure(f_title_line2,19,50,title_brush_2)
+	local title_y_off=get_title_y_off(title_phase,ptime)
+	local title_blink_chance=0
+	draw_figure(f_title_line1,
+				-2,25-title_y_off,
+				title_brush_1,
+				title_blink_chance)
+	draw_figure(f_title_line2,
+				19,50-title_y_off,
+				title_brush_2,
+				title_blink_chance)
 	srand(backup_seed)
-	if (ptime&0x08==0x08) then
+	if (ptimec&0x08==0x08) then
 		print("press 🅾️/❎ to start",35,80,14)
 	end
 	print("hang in against the cpu",20,100,14)
@@ -945,7 +990,9 @@ end
 function _draw()
 	cls(1)
 	if ms.phase=="main" then
-		draw_menu(ms.ptimec,ms.dseed)
+		local tp = get_title_phase(ms.ptime)
+		printh(""..tp.."@"..ms.ptime)
+		draw_menu(tp,ms.ptime,ms.ptimec,ms.dseed)
 	elseif ms.phase=="playing" then
 		draw_board()
 		if gs.phase=="cpu"
