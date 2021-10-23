@@ -660,9 +660,47 @@ function _update()
 end
 -->8
 -- drawing
-title_phases={["slow_blink"]=1, ["faster_blink"]=2, ["moving_up"]=3, ["full_title"]=4}
-title_phase_start_time={["slow_blink"]=0, ["faster_blink"]=60, ["moving_up"]=90, ["full_title"]=105}
-title_phase_duration={["slow_blink"]=60, ["faster_blink"]=30, ["moving_up"]=15, ["full_title"]=0}	--	full_title duration is unlimited
+title_phases={"wait", "slow_blink", "faster_blink", "moving_up", "full_title"}
+title_phase_durations={
+	["wait"]=30,
+	["slow_blink"]=30,
+	["faster_blink"]=10,
+	["moving_up"]=15,
+	["full_title"]=-1 -- infinite duration
+}
+
+function title_phase_valid(tp)
+	for phase in all(title_phases) do
+		if phase==tp then
+			return true
+		end
+	end
+	return false
+end
+
+function calc_title_phase_start_time()
+	local start_times={}
+	local phase_start=0
+	for i, phase in ipairs(title_phases) do
+		start_times[phase]=phase_start
+		phase_start+=title_phase_durations[phase]
+	end
+	return start_times
+end
+title_phase_start_times=calc_title_phase_start_time()
+
+function get_title_phase(ptime)
+	for i, title_phase in ipairs(title_phases) do
+		if (ptime >= title_phase_start_times[title_phase]) and
+				((title_phase_durations[title_phase]==-1) or -- infinite duration
+				 (ptime < (	title_phase_start_times[title_phase]+
+							title_phase_durations[title_phase])))
+		    then
+			return title_phase
+		end
+	end
+	return title_phases[1]
+end
 
 function rect2(x,y,w,h,c)
 	rect(x,y,x+w,y+h,c)
@@ -670,6 +708,16 @@ end
 
 function rectfill2(x,y,w,h,c)
 	rectfill(x,y,x+w,y+h,c)
+end
+
+-- highlighted print: string,x,y,color,highlight color
+function hprint(s,x,y,c,h)
+	for i=-1,1 do
+		for j=-1,1 do
+			print(s,x+i,y+j,h)
+		end
+	end
+	print(s,x,y,c)
 end
 
 -- vector figure table format: f[stroke][point in stroke][coord (x or y) of point]
@@ -923,63 +971,54 @@ function draw_score(score)
 	draw_int_to_chars(score,score_digits)
 end
 
-function get_title_phase(ptime)
-	if ms.ptime < title_phase_start_time["faster_blink"] then
-		return "slow_blink"
-	elseif ms.ptime < title_phase_start_time["moving_up"] then
-		return "faster_blink"
-	elseif ms.ptime < title_phase_start_time["full_title"] then
-		return "moving_up"
-	else
-		return "full_title"
-	end
-end
-
 function get_title_y_off(title_phase,ptime)
-	assert(title_phases[title_phase]!=nil)
+	assert(title_phase_valid(title_phase))
 	local title_max_y_off=20
 	if title_phase=="slow_blink" or title_phase=="faster_blink" then
 		return 0
 	elseif title_phase=="moving_up" then
-		return title_max_y_off*(ptime-title_phase_start_time["moving_up"])/title_phase_duration["moving_up"]
+		return title_max_y_off*(ptime-title_phase_start_times["moving_up"])/title_phase_durations["moving_up"]
 	else
 		return title_max_y_off
 	end
 end
 
 function get_title_blink_chance(title_phase,ptime)
-	assert(title_phases[title_phase]!=nil)
-	local slow_blink_rate=0.95
+	assert(title_phase_valid(title_phase))
+	local slow_blink_rate=0.75
 	if title_phase=="slow_blink" then
 		return slow_blink_rate
 	elseif title_phase=="faster_blink" then
-		return slow_blink_rate*(1-(ptime-title_phase_start_time["faster_blink"])/title_phase_duration["faster_blink"])
+		return slow_blink_rate*(1-(ptime-title_phase_start_times["faster_blink"])/title_phase_durations["faster_blink"])
 	else
 		return 0
 	end
 end
 
 function draw_menu(title_phase,ptime,ptimec,dseed)
-	assert(title_phases[title_phase]!=nil)
-	local backup_seed=rnd()
-	srand(dseed)
-	local title_y_off=get_title_y_off(title_phase,ptime)
+	assert(title_phase_valid(title_phase))
 	local title_blink_chance=get_title_blink_chance(title_phase,ptime)
-	draw_figure(f_title_line1,
-				-2,25-title_y_off,
-				title_brush_1,
-				title_blink_chance)
-	draw_figure(f_title_line2,
-				19,50-title_y_off,
-				title_brush_2,
-				title_blink_chance)
-	srand(backup_seed)
+	local title_y_off=get_title_y_off(title_phase,ptime)
+	cls(1)
+	if rnd(1)>=title_blink_chance and title_phase!="wait" then
+		local backup_seed=rnd()
+		srand(dseed)
+		draw_figure(f_title_line1,
+					-2,25-title_y_off,
+					title_brush_1,
+					0)
+		draw_figure(f_title_line2,
+					17,50-title_y_off,
+					title_brush_2,
+					0)
+		srand(backup_seed)
+	end
 	if title_phase=="full_title" then
 		if (ptimec&0x08==0x08) then
-			print("press 🅾️/❎ to start",25,85,14)
+			hprint("press 🅾️/❎ to start",25,85,14,10)
 		end
 		print("hang in against the cpu",20,105,14)
-		 print("for as long as possible",20,115,14)
+		print("for as long as possible",20,115,14)
 	end
 end
 
@@ -1002,12 +1041,12 @@ function draw_ai_levelup_indicator(rtime, first_round)
 end
 
 function _draw()
-	cls(1)
 	if ms.phase=="main" then
 		local tp = get_title_phase(ms.ptime)
-		printh(""..tp.."@"..ms.ptime)
+		-- printh(""..tp.."@"..ms.ptime)
 		draw_menu(tp,ms.ptime,ms.ptimec,ms.dseed)
 	elseif ms.phase=="playing" then
+		cls(1)
 		draw_board()
 		if gs.phase=="cpu"
 		or gs.phase=="player" then
