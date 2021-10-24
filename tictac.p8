@@ -784,16 +784,18 @@ end
 -- draw figure table
 -- blink chance: probability (0.0..1.0) that a certain stroke
 -- will not be drawn (used for special effects)
-function draw_figure(f,xoff,yoff,brush,blink_chance)
-	-- previous random offset x/y
-	local prox,proy=irnd(2),irnd(2)
+function draw_figure(f,xoff,yoff,brush,blink_chance,shake)
+	-- mroff: "max random offset"
+	local mroff=t(shake,2,0)
+	-- prox/proy: "previous random offset x/y"
+	local prox,proy=irnd(mroff),irnd(mroff)
 	local rox,roy
 	for stroke in all(f) do -- p=1,f.npts-1 do
 		if rnd(1)>blink_chance then
 			n_pts=count(stroke)
 			for p=1,n_pts-1 do
-				rox=irnd(2)
-				roy=irnd(2)
+				rox=irnd(mroff)
+				roy=irnd(mroff)
 				bline(
 					stroke[p][1]+xoff+prox,
 					stroke[p][2]+yoff+proy,
@@ -846,10 +848,10 @@ function draw_piece(piece,i,j,dseed,highlight)
 	local backup_seed=rnd()
 	if piece_shadows and not highlight then
 		srand(dseed)
-		draw_figure(figure,x0+1,y0+1,shadow_brush,0)
+		draw_figure(figure,x0+1,y0+1,shadow_brush,0,true)
 	end
 	srand(dseed)
-	draw_figure(figure,x0,y0,t(highlight,hi_brush,t(piece=="❎",x_brush,o_brush)),0)
+	draw_figure(figure,x0,y0,t(highlight,hi_brush,t(piece=="❎",x_brush,o_brush)),0,true)
 	srand(backup_seed)
 end
 
@@ -1006,11 +1008,11 @@ function draw_menu(title_phase,ptime,ptimec,dseed)
 		draw_figure(f_title_line1,
 					-2,25-title_y_off,
 					title_brush_1,
-					0)
+					0, false)
 		draw_figure(f_title_line2,
 					17,50-title_y_off,
 					title_brush_2,
-					0)
+					0, false)
 		srand(backup_seed)
 	end
 	if title_phase=="full_title" then
