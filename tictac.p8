@@ -986,36 +986,24 @@ function draw_score(score)
 	draw_int_to_chars(score,score_digits)
 end
 
-function get_title_y_off(title_phase,ptime)
-	assert(title_phase_valid(title_phase))
-	local title_max_y_off=20
-	if title_phase=="slow_blink" or title_phase=="faster_blink" then
-		return 0
-	elseif title_phase=="moving_up" then
-		return title_max_y_off*(ptime-title_phase_start_times["moving_up"])/title_phase_durations["moving_up"]
-	else
-		return title_max_y_off
-	end
-end
-
-function get_title_blink_chance(title_phase,ptime)
-	assert(title_phase_valid(title_phase))
-	local slow_blink_rate=0.75
-	if title_phase=="slow_blink" then
-		return slow_blink_rate
-	elseif title_phase=="faster_blink" then
-		return slow_blink_rate*(1-(ptime-title_phase_start_times["faster_blink"])/title_phase_durations["faster_blink"])
-	else
-		return 0
-	end
-end
-
 function get_title_phase_progress(title_phase,ptime) -- returns [0,1]
 	local time_in_this_phase=ptime-title_phase_start_times[title_phase]
 	if time_in_this_phase >= title_phase_durations[title_phase] then
 		return 1.0
 	else
 		return time_in_this_phase/title_phase_durations[title_phase]
+	end
+end
+
+function get_title_y_off(title_phase,ptime)
+	assert(title_phase_valid(title_phase))
+	local title_max_y_off=20
+	if title_phase=="hilite" or title_phase=="ttt_fade" or title_phase=="rush_in" then
+		return 0
+	elseif title_phase=="moving_up" then
+		return title_max_y_off*get_title_phase_progress("moving_up",ptime)
+	else
+		return title_max_y_off
 	end
 end
 
@@ -1036,7 +1024,7 @@ end
 
 function draw_menu(title_phase,ptime,ptimec,dseed)
 	assert(title_phase_valid(title_phase))
-	local title_y_off=10--get_title_y_off(title_phase,ptime)
+	local title_y_off=get_title_y_off(title_phase,ptime)
 	if title_phase=="full_title" then
 		cls(1)
 	else
@@ -1045,7 +1033,7 @@ function draw_menu(title_phase,ptime,ptimec,dseed)
 	if title_phase=="hilite" then
 		-- moving clipping rectangle only allows to see the "highlighted" portion of the logo
 		local starting_x=screen_w*get_title_phase_progress("hilite",ptime)
-		clip(starting_x,0,screen_w/title_phase_durations["hilite"],screen_h,false)
+		clip(starting_x,0,screen_w/title_phase_durations["hilite"]+1,screen_h,false)
 	else
 		clip()
 	end
@@ -1055,13 +1043,37 @@ function draw_menu(title_phase,ptime,ptimec,dseed)
 						get_line1_brush(title_phase,ptime),
 						0, false)
 	end
-	-- for i,figure in ipairs(title_line2) do
-	-- 	local sine_offset=3*sin((ptimec&0x1f)/0x1f+(i-1)*0.25)
-	-- 	draw_figure(figure,
-	-- 				8,50-title_y_off+sine_offset,
-	-- 				title_brush_2,
-	-- 				0, false)
-	-- end
+	if title_phase=="rush_in" or title_phase=="moving_up" or title_phase=="full_title" then
+		for i,figure in ipairs(title_line2) do
+			local sine_offset=
+				t(title_phase=="rush_in",
+				  3*sin((i-1)*0.25),
+				  3*sin((ptimec&0x1f)/0x1f+(i-1)*0.25))
+			local per_letter_offset=0
+			local letter_movement_start_progress=(i-1)*.25
+			local letter_movement_end_progress=i*.25
+			local individual_letter_y_off=0
+			if title_phase=="rush_in" then
+				local rush_in_progress=get_title_phase_progress("rush_in",ptime)
+				if rush_in_progress < letter_movement_start_progress then
+					-- out of screen
+					individual_letter_y_off = screen_h
+				elseif rush_in_progress < letter_movement_end_progress then
+					-- moving up
+					individual_letter_y_off = screen_h*(letter_movement_end_progress-rush_in_progress)
+				else
+					-- in its final place
+					individual_letter_y_off = 0
+				end
+			else
+				individual_letter_y_off = 0
+			end
+			draw_figure(figure,
+						8,58-title_y_off+sine_offset+individual_letter_y_off,
+						title_brush_2,
+						0, false)
+		end
+	end
 	if title_phase=="full_title" then
 		if (ptimec&0x08==0x08) then
 			hprint("press 🅾️/❎ to start",25,85,14,10)
