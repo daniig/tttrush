@@ -23,6 +23,7 @@ new_board=nil
 player_win_line=nil
 cpu_win_line=nil
 new_phase=nil
+title_phase=nil
 -- constants
 tile_side=33
 screen_side=128
@@ -77,6 +78,10 @@ max_int=32767
 ai_levelup_indicator_cooldown=30
 ai_levelup_spr=20
 fade_white_to_dark_blue={7,6,13,1}
+title_scroll_message_str="hang in against the cpu for as long as possible 😐😐😐 choose your move before the time runs out ⧗⧗⧗ fight an increasingly tough cpu 🐱🐱🐱 don't give up ∧∧∧ "
+title_scroll_message_length=151+3+3+3+3 -- special chars are double-width, we can't use lua's string length
+title_scroll_message_speed=1.75 -- pixels per 1/30 second
+title_scroll_message_width=print(title_scroll_message_str,tscrollx,screen_w,screen_h) -- prints off-screen just to calculate printed string length
 
 function has_value(t,v) -- table,value
  for i,val in ipairs(t) do
@@ -183,7 +188,8 @@ function make_ms(
 	phase,		-- one of m_phases
 	ptimec,		-- cyclic phase timer
 	ptime,		-- non-cyclic phase timer
-	dseed 		-- drawing rnd seed
+	dseed,		-- drawing rnd seed
+	tscrollx	-- title scrolling message x coord
 )
  --rudimentary typechecking
  if type(phase)!="string" then error=128+5 end
@@ -194,17 +200,19 @@ function make_ms(
  if type(ptimec)!="number" then error=128+7 end
  if type(ptime)!="number" then error=128+8 end
  if type(dseed)!="number" then error=128+9 end
+ if type(tscrollx)!="number" then error=128+10 end
  --	
 	return {
 		phase=phase,
 		ptimec=ptimec,
 		ptime=ptime,
-		dseed=dseed
+		dseed=dseed,
+		tscrollx=tscrollx
 	}
 end
 
 function make_init_ms()
- return make_ms("main",0,0,flr(rnd()*30000))
+ return make_ms("main",0,0,flr(rnd()*30000),screen_w)
 end
 
 function _init()
@@ -632,22 +640,29 @@ function next_m_phase(phase,btnpressed,return_to_main)
  end
 end
 
+function next_tscrollx(tscrollx)
+	return t(tscrollx<-title_scroll_message_width,
+				tscrollx+title_scroll_message_width,
+				tscrollx-title_scroll_message_speed)
+end
+
 function update_ms(ms,gs,input)
- local btnpressed=
-  input.btnp_❎ or input.btnp_🅾️
- local next_phase=next_m_phase(
-	 ms.phase,
-	 btnpressed,
-	 gs.phase=="lost"
-	 	and gs.ptime>lost_cooldown
-	 	and (input.btnp_❎ or input.btnp_🅾️))
+	title_phase = get_title_phase(ms.ptime)
+ 	local btnpressed=input.btnp_❎ or input.btnp_🅾️
+ 	local next_phase=next_m_phase(
+		ms.phase,
+		btnpressed,
+		gs.phase=="lost"
+			and gs.ptime>lost_cooldown
+			and (input.btnp_❎ or input.btnp_🅾️))
 	return make_ms(
 		next_phase,
 		next_ptime(ms.ptimec,false,true),
 		next_ptime(ms.ptime,false,false),
 		t(ms.ptimec&0x02==0x02,
 		  ms.dseed+1,
-		  ms.dseed))
+		  ms.dseed),
+		t(title_phase=="full_title",next_tscrollx(ms.tscrollx),ms.tscrollx))
 end
 
 function _update()
@@ -1024,7 +1039,9 @@ function get_line1_brush(title_phase,ptime)
 
 end
 
-function draw_menu(title_phase,ptime,ptimec,dseed)
+--function print_scrolling(string,ptime,)
+
+function draw_menu(title_phase,ptime,ptimec,dseed,tscrollx)
 	assert(title_phase_valid(title_phase))
 	-- setting background color
 	local title_y_off=get_title_y_off(title_phase,ptime)
@@ -1087,10 +1104,14 @@ function draw_menu(title_phase,ptime,ptimec,dseed)
 	-- title screen text
 	if title_phase=="full_title" then
 		if (ptimec&0x08==0x08) then
-			hprint("press 🅾️/❎ to start",25,85,14,10)
+			hprint("press 🅾️/❎ to start",25,105,14,10)
 		end
-		print("hang in against the cpu",20,105,14)
-		print("for as long as possible",20,115,14)
+		print(title_scroll_message_str,tscrollx,117,14)
+		-- print a second copy of the message if the first one
+		-- no longer takes up the whole width of the screen
+		if tscrollx < -title_scroll_message_width+screen_w then
+			print(title_scroll_message_str,tscrollx+title_scroll_message_width,117,14)
+		end
 	end
 end
 
@@ -1114,9 +1135,7 @@ end
 
 function _draw()
 	if ms.phase=="main" then
-		local tp = get_title_phase(ms.ptime)
-		-- printh(""..tp.."@"..ms.ptime)
-		draw_menu(tp,ms.ptime,ms.ptimec,0)--ms.dseed)
+		draw_menu(title_phase,ms.ptime,ms.ptimec,0,ms.tscrollx)
 	elseif ms.phase=="playing" then
 		cls(1)
 		draw_board()
