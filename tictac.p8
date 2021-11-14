@@ -76,6 +76,7 @@ piece_shadows=true
 max_int=32767
 ai_levelup_indicator_cooldown=30
 ai_levelup_spr=20
+fade_white_to_dark_blue={7,6,13,1}
 
 function has_value(t,v) -- table,value
  for i,val in ipairs(t) do
@@ -774,6 +775,7 @@ title_line2={
 	{{87,29},{111,24}},
 	{{110,3},{110,46}}}
 }
+title_line2_y=58
 
 -- brush line
 function bline(x0,y0,x1,y1,dd,brush)
@@ -1013,7 +1015,7 @@ function get_line1_brush(title_phase,ptime)
 	if title_phase == "hilite" then
 		return title_brush_1_array[number_of_brushes]
 	elseif title_phase == "ttt_fade" then
-		local faded_brush_index=ceil(get_title_phase_progress(title_phase,ptime)*number_of_brushes)
+		local faded_brush_index=ceil(get_title_phase_progress(title_phase,ptime)*(number_of_brushes-1))
 		--	we must clamp faded_brush_index to 1..number_of_brushes
 		return title_brush_1_array[t(faded_brush_index<1,1,ceil(faded_brush_index))]
 	else
@@ -1024,12 +1026,18 @@ end
 
 function draw_menu(title_phase,ptime,ptimec,dseed)
 	assert(title_phase_valid(title_phase))
+	-- setting background color
 	local title_y_off=get_title_y_off(title_phase,ptime)
 	if title_phase=="full_title" then
 		cls(1)
+	elseif title_phase=="moving_up" then
+		local number_of_fade_colors=count(fade_white_to_dark_blue)
+		local current_fade_color=ceil(number_of_fade_colors*get_title_phase_progress("moving_up", ptime))
+		cls(fade_white_to_dark_blue[t(current_fade_color>0,current_fade_color,1)])
 	else
 		cls(0)
 	end
+	-- draw title line 1
 	if title_phase=="hilite" then
 		-- moving clipping rectangle only allows to see the "highlighted" portion of the logo
 		local starting_x=screen_w*get_title_phase_progress("hilite",ptime)
@@ -1043,6 +1051,7 @@ function draw_menu(title_phase,ptime,ptimec,dseed)
 						get_line1_brush(title_phase,ptime),
 						0, false)
 	end
+	-- draw title line 2
 	if title_phase=="rush_in" or title_phase=="moving_up" or title_phase=="full_title" then
 		for i,figure in ipairs(title_line2) do
 			local sine_offset=
@@ -1060,7 +1069,8 @@ function draw_menu(title_phase,ptime,ptimec,dseed)
 					individual_letter_y_off = screen_h
 				elseif rush_in_progress < letter_movement_end_progress then
 					-- moving up
-					individual_letter_y_off = screen_h*(letter_movement_end_progress-rush_in_progress)
+					local sqrt_offset=(letter_movement_end_progress-rush_in_progress)
+					individual_letter_y_off = (screen_h)*(sqrt_offset*sqrt_offset)
 				else
 					-- in its final place
 					individual_letter_y_off = 0
@@ -1069,11 +1079,12 @@ function draw_menu(title_phase,ptime,ptimec,dseed)
 				individual_letter_y_off = 0
 			end
 			draw_figure(figure,
-						8,58-title_y_off+sine_offset+individual_letter_y_off,
+						8,title_line2_y-title_y_off+sine_offset+individual_letter_y_off,
 						title_brush_2,
 						0, false)
 		end
 	end
+	-- title screen text
 	if title_phase=="full_title" then
 		if (ptimec&0x08==0x08) then
 			hprint("press 🅾️/❎ to start",25,85,14,10)
