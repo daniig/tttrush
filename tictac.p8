@@ -760,7 +760,7 @@ end
 f_circle=make_circle(12,tile_side*0.35)
 f_ecks={
 	{{0,0},{23,23}},
-	{{23,0},{0,23}}
+	{{22,1},{15,8},{8,14},{0,23}}
 }
 f_title_line1={
 	{{3,7},{20,3}},	-- t
@@ -818,7 +818,8 @@ end
 -- draw figure table
 -- blink chance: probability (0.0..1.0) that a certain stroke
 -- will not be drawn (used for special effects)
-function draw_figure(f,xoff,yoff,brush,blink_chance,shake)
+-- dd: brush diameter
+function draw_figure(f,xoff,yoff,brush,blink_chance,shake,dd)
 	-- mroff: "max random offset"
 	local mroff=t(shake,2,0)
 	-- prox/proy: "previous random offset x/y"
@@ -835,7 +836,7 @@ function draw_figure(f,xoff,yoff,brush,blink_chance,shake)
 					stroke[p][2]+yoff+proy,
 					stroke[p+1][1]+xoff+rox,
 					stroke[p+1][2]+yoff+roy,
-					1,
+					dd,
 					brush)
 				prox=rox
 				proy=roy
@@ -877,15 +878,15 @@ end
 function draw_piece(piece,i,j,dseed,highlight)
 	local figure=t(piece=="❎",f_ecks,f_circle)
 	local additional_offset=t(piece=="❎", -1, -.6)
-	local x0=tile_off_x+(i+additional_offset)*tile_side+1
-	local y0=tile_off_y+(j+additional_offset)*tile_side+1
+	local x0=tile_off_x+(i+additional_offset)*tile_side+t(piece=="❎",1,0)
+	local y0=tile_off_y+(j+additional_offset)*tile_side+t(piece=="❎",1,0)
 	local backup_seed=rnd()
 	if piece_shadows and not highlight then
 		srand(dseed)
-		draw_figure(figure,x0+1,y0+1,shadow_brush,0,true)
+		draw_figure(figure,x0+1,y0+1,shadow_brush,0,true,1)
 	end
 	srand(dseed)
-	draw_figure(figure,x0,y0,t(highlight,hi_brush,t(piece=="❎",x_brush,o_brush)),0,true)
+	draw_figure(figure,x0,y0,t(highlight,hi_brush,t(piece=="❎",x_brush,o_brush)),0,true,1)
 	srand(backup_seed)
 end
 
@@ -1070,13 +1071,13 @@ function draw_menu(title_phase,ptime,ptimec,dseed,tscrollx)
 		draw_figure(f_title_line1,
 						-2+2,25-title_y_off+2,
 						title_brush_1_shadow,
-						0, false)
+						0, false, 1)
 	end
 	if title_phase!="wait" then
 		draw_figure(f_title_line1,
 						-2,25-title_y_off,
 						get_line1_brush(title_phase,ptime),
-						0, false)
+						0, false, 1)
 	end
 	-- draw title line 2
 	if title_phase=="rush_in" or title_phase=="moving_up" or title_phase=="full_title" then
@@ -1111,13 +1112,13 @@ function draw_menu(title_phase,ptime,ptimec,dseed,tscrollx)
 				draw_figure(figure,
 						8,title_line2_y-title_y_off+trailing_sine_offset+individual_letter_y_off,
 						title_brush_2_shadow,
-						0, false)
+						0, false, 4)
 				fillp(0b0000000000000000.01)
 			end
 			draw_figure(figure,
 						8,title_line2_y-title_y_off+sine_offset+individual_letter_y_off,
 						title_brush_2,
-						0, false)
+						0, false, 2)
 		end
 	end
 	-- sparkling lights
