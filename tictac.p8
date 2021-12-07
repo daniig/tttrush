@@ -220,6 +220,7 @@ function make_init_ms()
 end
 
 function _init()
+	pal(5, 0x05, 2) 
 	gs=make_init_gs()
 	ms=make_init_ms()
 end
@@ -692,6 +693,10 @@ title_phase_durations={
 	["moving_up"]=15,
 	["full_title"]=-1 -- infinite duration
 }
+default_ptn=0
+checkerboard_ptn=0b1010010110100101
+apply_to_sprites_ptn=0b.01
+transparent_ptn=0b.1
 
 function title_phase_valid(tp)
 	for phase in all(title_phases) do
@@ -1108,12 +1113,13 @@ function draw_menu(title_phase,ptime,ptimec,dseed,tscrollx)
 			end
 			if title_phase=="full_title" then
 				local trailing_sine_offset=3*sin(((ptimec-4)&0x1f)/0x1f+(i-1)*0.25)
-				fillp(0b1010010110100101.01)
+				-- see secondary palette modifications in _init
+				fillp(checkerboard_ptn+apply_to_sprites_ptn+transparent_ptn)
 				draw_figure(figure,
 						8,title_line2_y-title_y_off+trailing_sine_offset+individual_letter_y_off,
 						title_brush_2_shadow,
 						0, false, 4)
-				fillp(0b0000000000000000.01)
+				fillp(default_ptn+apply_to_sprites_ptn+transparent_ptn)
 			end
 			draw_figure(figure,
 						8,title_line2_y-title_y_off+sine_offset+individual_letter_y_off,
