@@ -1177,8 +1177,7 @@ sw_t=screen_w/bgfx_tile_size
 sh_t=screen_h/bgfx_tile_size
 fx_r=sw_t -- circle radius
 fx_period=240 -- effect period, in frames
-function draw_bg(frame)
-	printh(frame)
+function draw_bg_1(frame)
 	for tx=0,sw_t/2-1 do
         local px=tx*bgfx_tile_size
         for ty=0,sh_t/2-1 do
@@ -1195,12 +1194,50 @@ function draw_bg(frame)
 	fillp(0)
 end
 
+sep_z=1 	-- distance between grid lines
+sep_x=sep_z*50
+floor_y=50
+field_width=1000
+horizon_z=floor_y/8
+function draw_bg_2()
+	-- cls(0)
+	theta=time()/32
+	for mirror_v in all({-1,1}) do
+		-- depth lines
+		for i=1,6 do
+			local line_z=i*sep_z-(time()%sep_z)
+			line(64+(cos(theta)*(-field_width)+sin(theta)*floor_y*mirror_v)/line_z,
+				64-(-sin(theta)*(-field_width)+cos(theta)*floor_y*mirror_v)/line_z,
+				64+(cos(theta)*field_width+sin(theta)*floor_y*mirror_v)/line_z,
+				64-(-sin(theta)*field_width+cos(theta)*floor_y*mirror_v)/line_z,
+				1)
+		end
+		-- horizon-parallel lines
+		for i=-4,4 do
+			local line_x=i*sep_x
+			line(64+(cos(theta)*line_x+sin(theta)*floor_y*mirror_v)/horizon_z,
+				64-(-sin(theta)*line_x+cos(theta)*floor_y*mirror_v)/horizon_z,
+				64+(cos(theta)*line_x+sin(theta)*floor_y*mirror_v)/0.1,
+				64-(-sin(theta)*line_x+cos(theta)*floor_y*mirror_v)/0.1,
+				1)
+		end
+		-- horizon
+		line(64+(cos(theta)*(-field_width)+sin(theta)*floor_y*mirror_v)/horizon_z,
+				64-(-sin(theta)*(-field_width)+cos(theta)*floor_y*mirror_v)/horizon_z,
+				64+(cos(theta)*field_width+sin(theta)*floor_y*mirror_v)/horizon_z,
+				64-(-sin(theta)*field_width+cos(theta)*floor_y*mirror_v)/horizon_z,
+				13)
+		-- light at the end
+	end
+end
+
 function _draw()
 	if ms.phase=="main" then
 		draw_menu(title_phase,ms.ptime,ms.ptimec,ms.dseed,ms.tscrollx)
 	elseif ms.phase=="playing" then
 		cls(0)
-		draw_bg(time()*30)
+		--draw_bg_1(time()*30)
+		draw_bg_2(time()*30)
 		draw_board()
 		if gs.phase=="cpu"
 		or gs.phase=="player" then
