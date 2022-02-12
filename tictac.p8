@@ -88,6 +88,7 @@ title_scroll_message_speed=2 -- pixels per 1/30 second
 title_scroll_message_width=print(title_scroll_message_str,tscrollx,screen_w,screen_h) -- prints off-screen just to calculate printed string length
 sparkle_sprite_1=12
 sparkle_sprite_2=28
+number_of_bgfx=2 -- number of different background effects
 
 function has_value(t,v) -- table,value
  for i,val in ipairs(t) do
@@ -199,30 +200,33 @@ function make_ms(
 	ptimec,		-- cyclic phase timer
 	ptime,		-- non-cyclic phase timer
 	dseed,		-- drawing rnd seed
-	tscrollx	-- title scrolling message x coord
+	tscrollx,	-- title scrolling message x coord
+	bgfx		-- background effect
 )
- --rudimentary typechecking
- if type(phase)!="string" then error=128+5 end
- if not has_value(m_phases,phase) then
- 	error=128+6
- 	printh(phase)
- end
- if type(ptimec)!="number" then error=128+7 end
- if type(ptime)!="number" then error=128+8 end
- if type(dseed)!="number" then error=128+9 end
- if type(tscrollx)!="number" then error=128+10 end
- --	
+	--rudimentary typechecking
+	if type(phase)!="string" then error=128+5 end
+	if not has_value(m_phases,phase) then
+		error=128+6
+		printh(phase)
+	end
+	if type(ptimec)!="number" then error=128+7 end
+	if type(ptime)!="number" then error=128+8 end
+	if type(dseed)!="number" then error=128+9 end
+	if type(tscrollx)!="number" then error=128+10 end
+	if type(bgfx)!="number" then error=128+11 end
+	--	
 	return {
 		phase=phase,
 		ptimec=ptimec,
 		ptime=ptime,
 		dseed=dseed,
-		tscrollx=tscrollx
+		tscrollx=tscrollx,
+		bgfx=bgfx
 	}
 end
 
 function make_init_ms()
- return make_ms("main",0,0,flr(rnd()*30000),screen_w)
+ 	return make_ms("main",0,0,flr(rnd()*30000),screen_w,0)
 end
 
 function _init()
@@ -469,47 +473,44 @@ function get_cpu_move(board,diff)
 end
 
 function next_phase(phase,moved,timer,new_board,ptime,btn_pressed,cpu_won,player_won)
- if phase=="player" then
-  if player_won then 
-   return "won"
-  elseif timer<=0 then
-  	return "lost"
-  elseif board_full(new_board) then
-   return "tie_player"
-  else
-		 return t(moved,"cpu","player")
-  end		
+ 	if phase=="player" then
+  		if player_won then 
+   			return "won"
+  		elseif timer<=0 then
+  			return "lost"
+  		elseif board_full(new_board) then
+   			return "tie_player"
+  		else
+		 	return t(moved,"cpu","player")
+  		end		
 	elseif phase=="cpu" then
-	 if cpu_won then
-	  return "lost"
-	 elseif board_full(new_board) then
-	  return "tie_cpu"
+	 	if cpu_won then
+	  		return "lost"
+	 	elseif board_full(new_board) then
+	  		return "tie_cpu"
 		else
 			return t(moved,"player","cpu")
-  end	
+  		end	
 	elseif phase=="lost" then
 		return "lost"
 	elseif phase=="won" then
-		return t(
-		 ptime>won_cooldown,"cpu",phase)
+		return t(ptime>won_cooldown,"cpu",phase)
 	elseif phase=="tie_cpu" then
-	 return t(ptime>tie_cooldown,"player",phase)
+		return t(ptime>tie_cooldown,"player",phase)
 	elseif phase=="tie_player" then
-	 return t(ptime>tie_cooldown,"cpu",phase)
+	 	return t(ptime>tie_cooldown,"cpu",phase)
 	else
 		return phase										 
 	end
 end
 
 function next_timer(timer,move,rate,phase)
- if phase=="lost" then
-  return timer
- else
-		return t(move==nil,
-	          t((timer-rate>=0),
-	            timer-rate,
-	            0),
-	          max_timer)
+ 	if phase=="lost" then
+  		return timer
+ 	else
+		return t(	move==nil,
+	          		t((timer-rate>=0),timer-rate,0),
+	          		max_timer)
 	end
 end
 
@@ -638,7 +639,8 @@ function update_gs(gs,input)
 		  gs.phase=="tie_player" or gs.phase=="tie_cpu",
 		  false,
 		  gs.first_round),
-		t(current_move, current_move, gs.last_move)
+		t(current_move, current_move, gs.last_move),
+		gs.bgfx
 	)
 end
 
@@ -674,16 +676,18 @@ function update_ms(ms,gs,input)
 		t(ms.ptimec&0x02==0x02,
 		  ms.dseed+1,
 		  ms.dseed),
-		t(title_phase=="full_title",next_tscrollx(ms.tscrollx),ms.tscrollx))
+		t(title_phase=="full_title",next_tscrollx(ms.tscrollx),ms.tscrollx),
+		t(	ms.phase=="playing" and (next_phase!=ms.phase), -- returning to menu
+			t(ms.bgfx==(number_of_bgfx-1),0,ms.bgfx+1),
+			ms.bgfx))
 end
 
 function _update()
- input=make_input()
- ms=update_ms(ms,gs,input)
- if ms.phase=="main"
- and (input.btnp_❎ or input.btnp_🅾️) then
- 	gs=make_init_gs() 
- elseif ms.phase=="playing" then
+ 	input=make_input()
+ 	ms=update_ms(ms,gs,input)
+ 	if ms.phase=="main" and (input.btnp_❎ or input.btnp_🅾️) then
+ 		gs=make_init_gs() 
+ 	elseif ms.phase=="playing" then
 		gs=update_gs(gs,input)
 		fire_sfx(gs,gs.prev_phase)
 	end
@@ -942,7 +946,7 @@ function draw_timer(timer)
 end
 
 -- inspired by locomotion tv channel
-loco_border_color=13
+loco_border_color=8
 loco_color_1=7
 loco_color_2=12
 function locoprint(str,x,y,depth)
@@ -976,13 +980,13 @@ function draw_usr_msg(phase,rounds,ptime,last_move)
 					7)
 		end
 	elseif phase=="won" then
-		local depth=-3.5*sin(ptime/won_cooldown/2)
+		local depth=flr(-3.5*sin(ptime/won_cooldown/2))
 	 	locoprint(	"won",
 		 			tile_off_x+(last_move.x-1)*tile_side+depth+5,
 					tile_off_y+(last_move.y-1)*tile_side+depth+10,
 					depth)
 	elseif phase=="tie_cpu"	or phase=="tie_player" then
-		local depth=-3.5*sin(ptime/tie_cooldown/2)
+		local depth=flr(-3.5*sin(ptime/tie_cooldown/2))
 	 	locoprint(	"tie",
 		 			tile_off_x+(last_move.x-1)*tile_side+depth+5,
 					tile_off_y+(last_move.y-1)*tile_side+depth+10,
@@ -1208,14 +1212,14 @@ bgfx_tile_size=8
 sw_t=screen_w/bgfx_tile_size
 sh_t=screen_h/bgfx_tile_size
 fx_r=sw_t -- circle radius
-fx_period=240 -- effect period, in frames
-function draw_bg_1(frame)
+fx_period=8 -- effect period, in seconds
+function draw_bg_circles(t)
 	for tx=0,sw_t/2-1 do
         local px=tx*bgfx_tile_size
         for ty=0,sh_t/2-1 do
             local py=ty*bgfx_tile_size
             local d=sqrt(tx*tx+ty*ty) -- tried putting this in a lut, but no perf gains
-            local intensity=17/2*(1.0+sin(d*1/fx_r-frame/fx_period))
+            local intensity=17/2*(1.0+sin(d*1/fx_r-t/fx_period))
             fillp(bayer_4x4_fillp_lut[cla(flr(intensity),0,16)])
             spr(32, px+screen_w_half,py+screen_h_half) -- DR
             spr(32, px+screen_w_half,-bgfx_tile_size-py+screen_h_half) -- UR
@@ -1231,13 +1235,13 @@ sep_x=sep_z*50
 floor_y=50
 field_width=1000
 horizon_z=floor_y/8
-function draw_bg_2()
+function draw_bg_grid(t)
 	-- cls(0)
-	theta=time()/32
+	theta=t/32
 	for mirror_v in all({-1,1}) do
 		-- depth lines
 		for i=1,6 do
-			local line_z=i*sep_z-(time()%sep_z)
+			local line_z=i*sep_z-(t%sep_z)
 			line(64+(cos(theta)*(-field_width)+sin(theta)*floor_y*mirror_v)/line_z,
 				64-(-sin(theta)*(-field_width)+cos(theta)*floor_y*mirror_v)/line_z,
 				64+(cos(theta)*field_width+sin(theta)*floor_y*mirror_v)/line_z,
@@ -1259,17 +1263,16 @@ function draw_bg_2()
 				64+(cos(theta)*field_width+sin(theta)*floor_y*mirror_v)/horizon_z,
 				64-(-sin(theta)*field_width+cos(theta)*floor_y*mirror_v)/horizon_z,
 				13)
-		-- light at the end
 	end
 end
 
+bgfx_table={[0]=draw_bg_grid, draw_bg_circles}
 function _draw()
 	if ms.phase=="main" then
 		draw_menu(title_phase,ms.ptime,ms.ptimec,ms.dseed,ms.tscrollx)
 	elseif ms.phase=="playing" then
 		cls(0)
-		--draw_bg_1(time()*30)
-		draw_bg_2(time()*30)
+		bgfx_table[ms.bgfx](time())
 		draw_board()
 		if gs.phase=="cpu"
 		or gs.phase=="player" then
