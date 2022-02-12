@@ -936,6 +936,27 @@ function draw_timer(timer)
 	end
 end
 
+-- inspired by locomotion tv channel
+loco_border_color=13
+loco_color_1=7
+loco_color_2=12
+function locoprint(str,x,y,depth)
+	big_str="\^t\^w"..str
+	-- volume
+	for d=1,depth do
+		print(big_str,x-1-d,y-1-d,loco_border_color)
+		print(big_str,x-1-d,y-d+1,loco_border_color)
+		print(big_str,x+1-d,y-1-d,loco_border_color)
+	end
+	-- front border
+	print(big_str,x-1,y-1,loco_border_color)
+	print(big_str,x+1,y-1,loco_border_color)
+	print(big_str,x-1,y+1,loco_border_color)
+	print(big_str,x+1,y+1,loco_border_color)
+	-- front
+	print(big_str,x,y,t(band(time(),0b.0001),loco_color_1,loco_color_2))
+end
+
 function draw_usr_msg(phase,rounds,ptime)
 	if phase=="lost" then
 		print("lost",screen_side/4,
@@ -949,8 +970,8 @@ function draw_usr_msg(phase,rounds,ptime)
 				screen_side/4+20,7)
 		end
 	elseif phase=="won" then
-	 print("won",screen_side/4,
-			screen_side/4,7)
+		local depth=-3.5*sin(ptime/won_cooldown/2)
+	 	locoprint("won",screen_side/2+depth,screen_side/2+depth,depth)
 	elseif phase=="tie_cpu"
 	or phase=="tie_player" then
 		print("tie",screen_side/4,
