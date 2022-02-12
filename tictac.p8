@@ -964,27 +964,30 @@ end
 
 function draw_usr_msg(phase,rounds,ptime,last_move)
 	if phase=="lost" then
-		print("lost",screen_side/4,
-			screen_side/4,7)
-	 print("rounds played: "..rounds,
-	  screen_side/4,
-			screen_side/4+10,7)
+		print("lost",screen_side/4,screen_side/4,7)
+	 	print(	"rounds played: "..rounds,
+	  			screen_side/4,
+				screen_side/4+10,
+				7)
 		if ptime>lost_cooldown then
-			print("press 🅾️/❎ to restart",
-				screen_side/4,
-				screen_side/4+20,7)
+			print(	"press 🅾️/❎ to restart",
+					screen_side/4,
+					screen_side/4+20,
+					7)
 		end
 	elseif phase=="won" then
-		depth=-3.5*sin(ptime/won_cooldown/2)
+		local depth=-3.5*sin(ptime/won_cooldown/2)
 	 	locoprint(	"won",
 		 			tile_off_x+(last_move.x-1)*tile_side+depth+5,
 					tile_off_y+(last_move.y-1)*tile_side+depth+10,
 					depth)
-	elseif phase=="tie_cpu"
-	or phase=="tie_player" then
-		print("tie",screen_side/4,
-			screen_side/4,7)
- end
+	elseif phase=="tie_cpu"	or phase=="tie_player" then
+		local depth=-3.5*sin(ptime/tie_cooldown/2)
+	 	locoprint(	"tie",
+		 			tile_off_x+(last_move.x-1)*tile_side+depth+5,
+					tile_off_y+(last_move.y-1)*tile_side+depth+10,
+					depth)
+ 	end
 end
 
 function draw_info(diff,rate,score)
