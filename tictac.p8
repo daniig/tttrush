@@ -124,7 +124,8 @@ function make_gs(
 	score,
 	dseed,		-- piece drawing rnd seed
 	rtime,    	-- time elapsed in current round (max 32767 frames)
-	first_round -- first round of the game after main menu
+	first_round,-- first round of the game after main menu
+	last_move   -- last move performed, either by AI or human (or cat, etc.)
 )
  --rudimentary typechecking
  if type(cursor_pos)!="table" then error=1 end
@@ -147,6 +148,7 @@ function make_gs(
  if type(dseed)!="number" then error=14 end
  if type(rtime)!="number" then error=15 end
  if type(first_round)!="boolean" then error=16 end
+ if (last_move!=nil and (last_move.x==nil or last_move.y==nil or type(last_move.x)!="number" or type(last_move.y)!="number")) then error=17 end
  --	
 	return {
 		cursor_pos=cursor_pos,
@@ -164,7 +166,8 @@ function make_gs(
 		score=score,
 		dseed=dseed,
 		rtime=rtime,
-		first_round=first_round
+		first_round=first_round,
+		last_move=last_move
 	}
 end
 
@@ -186,7 +189,8 @@ function make_init_gs()
 			0,
 			flr(rnd()*30000),
 			0,
-			true
+			true,
+			nil
 		)
 end
 
@@ -633,7 +637,8 @@ function update_gs(gs,input)
 		t(gs.phase=="won" or gs.phase=="lost" or
 		  gs.phase=="tie_player" or gs.phase=="tie_cpu",
 		  false,
-		  gs.first_round)
+		  gs.first_round),
+		t(current_move, current_move, gs.last_move)
 	)
 end
 
@@ -957,7 +962,7 @@ function locoprint(str,x,y,depth)
 	print(big_str,x,y,t(band(time(),0b.0001),loco_color_1,loco_color_2))
 end
 
-function draw_usr_msg(phase,rounds,ptime)
+function draw_usr_msg(phase,rounds,ptime,last_move)
 	if phase=="lost" then
 		print("lost",screen_side/4,
 			screen_side/4,7)
@@ -970,8 +975,11 @@ function draw_usr_msg(phase,rounds,ptime)
 				screen_side/4+20,7)
 		end
 	elseif phase=="won" then
-		local depth=-3.5*sin(ptime/won_cooldown/2)
-	 	locoprint("won",screen_side/2+depth,screen_side/2+depth,depth)
+		depth=-3.5*sin(ptime/won_cooldown/2)
+	 	locoprint(	"won",
+		 			tile_off_x+(last_move.x-1)*tile_side+depth+5,
+					tile_off_y+(last_move.y-1)*tile_side+depth+10,
+					depth)
 	elseif phase=="tie_cpu"
 	or phase=="tie_player" then
 		print("tie",screen_side/4,
@@ -1273,7 +1281,7 @@ function _draw()
 		draw_ai_levelup_indicator(gs.rtime, gs.first_round)
 		draw_ai_level(gs.diff)
 		draw_score(gs.score)
-		draw_usr_msg(gs.phase,gs.rounds,gs.ptimec)
+		draw_usr_msg(gs.phase,gs.rounds,gs.ptimec,gs.last_move)
 		--draw_info(gs.diff,gs.rate,gs.score)
 	end
 	if error>0 then
