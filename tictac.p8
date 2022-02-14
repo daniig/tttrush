@@ -50,12 +50,15 @@ rate_coeff=1.075
 diff_inc=11
 phases={
 	"player","cpu","lost","init",
-	"tie_cpu","tie_player","won"
+	"tie_cpu","tie_player","won","recap"
 }
 m_phases={"main","playing"} -- menu phases
+lost_vanish_dur=40
 lost_cooldown=40
+recap_cooldown=80
 tie_cooldown=20
 won_cooldown=20
+recap_cooldown=60
 error=0
 control_rz=0 -- control return to zero
 max_blinky_off=tile_side*0.2
@@ -358,10 +361,9 @@ end
 
 
 function put_mark(board,phase,move)
- if move!=nil then
-		board[move.x][move.y]=
-			t(phase=="player",player_mark,cpu_mark)
-	end
+	if move!=nil then
+		board[move.x][move.y]=t(phase=="player",player_mark,cpu_mark)
+	end	
 	return board
 end	
 
@@ -492,7 +494,9 @@ function next_phase(phase,moved,timer,new_board,ptime,btn_pressed,cpu_won,player
 			return t(moved,"player","cpu")
   		end	
 	elseif phase=="lost" then
-		return "lost"
+		return t(btn_pressed and ptime>lost_cooldown,"recap","lost")
+	elseif phase=="recap" then
+		return "recap"
 	elseif phase=="won" then
 		return t(ptime>won_cooldown,"cpu",phase)
 	elseif phase=="tie_cpu" then
@@ -505,7 +509,7 @@ function next_phase(phase,moved,timer,new_board,ptime,btn_pressed,cpu_won,player
 end
 
 function next_timer(timer,move,rate,phase)
- 	if phase=="lost" then
+ 	if phase=="lost" or phase=="recap" then
   		return timer
  	else
 		return t(	move==nil,
@@ -593,13 +597,14 @@ function update_gs(gs,input)
 	new_phase=next_phase(
 		gs.phase,current_move!=nil,
 		gs.timer,new_board,gs.ptime,
-		input.btnp_🅾️ or input.btnp_❎,
+		input.btnp_🅾️ or input.btnp_❎,  
 		cpu_win_line!=nil,player_win_line!=nil)
+	printh(new_phase.." "..gs.ptime)
 	local game_start=(new_phase!=gs.phase) and (gs.phase=="menu" or gs.phase=="lost");
 	local round_restart=
 		(new_phase!=gs.phase) and
 		(gs.phase=="won" or
-		 gs.phase=="lost" or
+		 gs.phase=="recap" or
 		 gs.phase=="tie_player" or
 		 gs.phase=="tie_cpu");
 	local score_inc=calc_score_inc(gs.timer)
@@ -666,8 +671,8 @@ function update_ms(ms,gs,input)
  	local next_phase=next_m_phase(
 		ms.phase,
 		btnpressed,
-		gs.phase=="lost"
-			and gs.ptime>lost_cooldown
+		gs.phase=="recap"
+			and gs.ptime>recap_cooldown
 			and (input.btnp_❎ or input.btnp_🅾️))
 	return make_ms(
 		next_phase,
@@ -966,14 +971,22 @@ function locoprint(str,x,y,depth)
 	print(big_str,x,y,t(band(time(),0b.0001),loco_color_1,loco_color_2))
 end
 
+lost_anim_dur=60
 function draw_usr_msg(phase,rounds,ptime,last_move)
 	if phase=="lost" then
-		print("lost",screen_side/4,screen_side/4,7)
+		local depth=t(	ptime<lost_anim_dur,
+						flr(-3.5*sin(ptime/lost_anim_dur/2)),
+						0)
+		locoprint(	"lost",
+					tile_off_x+(last_move.x-1)*tile_side+depth+5,
+					tile_off_y+(last_move.y-1)*tile_side+depth+10,
+					depth)
+	elseif phase=="recap" then
 	 	print(	"rounds played: "..rounds,
 	  			screen_side/4,
 				screen_side/4+10,
 				7)
-		if ptime>lost_cooldown then
+		if ptime>recap_cooldown then
 			print(	"press 🅾️/❎ to restart",
 					screen_side/4,
 					screen_side/4+20,
@@ -992,11 +1005,6 @@ function draw_usr_msg(phase,rounds,ptime,last_move)
 					tile_off_y+(last_move.y-1)*tile_side+depth+10,
 					depth)
  	end
-end
-
-function draw_info(diff,rate,score)
-	print("diff="..diff.."/255 rate="..rate,0,0,7)
-	print("score="..score,0,123,7)
 end
 
 function draw_blinky(b,blink_phase)
@@ -1273,20 +1281,27 @@ function _draw()
 	elseif ms.phase=="playing" then
 		cls(0)
 		bgfx_table[ms.bgfx](time())
-		draw_board()
-		if gs.phase=="cpu"
-		or gs.phase=="player" then
-			draw_cursor(gs.cursor_pos,gs.phase,gs.ptimec)
+		if gs.phase=="recap" then
+			local vanish_progress=gs.ptime/lost_vanish_dur
+			fillp(0b.1+bayer_4x4_fillp_lut[cla(flr(16*vanish_progress),0,16)])
 		end
-		local win_line=t(player_win_line==nil,cpu_win_line,player_win_line)
-		draw_pieces(gs.board,gs.dseed,win_line,gs.ptime)
-		if gs.blinky!=nil then
-			draw_blinky(gs.blinky,0) --gs.ptimec&0x01)
+		if not (gs.phase=="recap" and gs.ptime>lost_vanish_dur) then
+			draw_board()
+			if gs.phase=="cpu"
+			or gs.phase=="player" then
+				draw_cursor(gs.cursor_pos,gs.phase,gs.ptimec)
+			end
+			local win_line=t(player_win_line==nil,cpu_win_line,player_win_line)
+			draw_pieces(gs.board,gs.dseed,win_line,gs.ptime)
+			if gs.blinky!=nil then
+				draw_blinky(gs.blinky,0) --gs.ptimec&0x01)
+			end
+			draw_timer(gs.timer)
+			draw_ai_levelup_indicator(gs.rtime, gs.first_round)
+			draw_ai_level(gs.diff)
+			draw_score(gs.score)
 		end
-		draw_timer(gs.timer)
-		draw_ai_levelup_indicator(gs.rtime, gs.first_round)
-		draw_ai_level(gs.diff)
-		draw_score(gs.score)
+		fillp(0)
 		draw_usr_msg(gs.phase,gs.rounds,gs.ptimec,gs.last_move)
 		--draw_info(gs.diff,gs.rate,gs.score)
 	end
