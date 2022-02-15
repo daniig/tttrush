@@ -55,10 +55,9 @@ phases={
 m_phases={"main","playing"} -- menu phases
 lost_vanish_dur=40
 lost_cooldown=40
-recap_cooldown=80
 tie_cooldown=20
 won_cooldown=20
-recap_cooldown=60
+recap_cooldown=80
 error=0
 control_rz=0 -- control return to zero
 max_blinky_off=tile_side*0.2
@@ -649,9 +648,9 @@ function update_gs(gs,input)
 	)
 end
 
-function next_m_phase(phase,btnpressed,return_to_main)
+function next_m_phase(phase,ms_ptime,btnpressed,return_to_main)
  if phase=="main" then
-  return t(btnpressed,"playing","main")
+  return t(btnpressed and ms_ptime>title_phase_start_times["full_title"],"playing","main")
  elseif phase=="playing" then
   return t(return_to_main,"main","playing")
  else -- should never get here
@@ -670,6 +669,7 @@ function update_ms(ms,gs,input)
  	local btnpressed=input.btnp_❎ or input.btnp_🅾️
  	local next_phase=next_m_phase(
 		ms.phase,
+		ms.ptime,
 		btnpressed,
 		gs.phase=="recap"
 			and gs.ptime>recap_cooldown
@@ -951,59 +951,97 @@ function draw_timer(timer)
 end
 
 -- inspired by locomotion tv channel
-loco_border_color=8
-loco_color_1=7
-loco_color_2=12
-function locoprint(str,x,y,depth)
+function locoprint(str,x,y,depth,colors)
+	if colors.border==nil or colors.color_1==nil or colors.color_2==nil then
+		printh("error llamada a locoprint")
+	end
 	big_str="\^t\^w"..str
 	-- volume
 	for d=1,depth do
-		print(big_str,x-1-d,y-1-d,loco_border_color)
-		print(big_str,x-1-d,y-d+1,loco_border_color)
-		print(big_str,x+1-d,y-1-d,loco_border_color)
+		print(big_str,x+depth-1-d,y+depth-1-d,colors.border)
+		print(big_str,x+depth-1-d,y+depth-d+1,colors.border)
+		print(big_str,x+depth+1-d,y+depth-1-d,colors.border)
 	end
 	-- front border
-	print(big_str,x-1,y-1,loco_border_color)
-	print(big_str,x+1,y-1,loco_border_color)
-	print(big_str,x-1,y+1,loco_border_color)
-	print(big_str,x+1,y+1,loco_border_color)
+	print(big_str,x+depth-1,y+depth-1,colors.border)
+	print(big_str,x+depth+1,y+depth-1,colors.border)
+	print(big_str,x+depth-1,y+depth+1,colors.border)
+	print(big_str,x+depth+1,y+depth+1,colors.border)
 	-- front
-	print(big_str,x,y,t(band(time(),0b.0001),loco_color_1,loco_color_2))
+	print(big_str,x+depth,y+depth,t(band(time(),0b.0001),colors.color_1,colors.color_2))
+end
+
+ranks={
+	{name="e", 	top=500},
+	{name="d", 	top=1000},
+	{name="c", 	top=1500},
+	{name="b-", top=2000},
+	{name="b", 	top=2500},
+	{name="b+", top=3000},
+	{name="a-", top=3500},
+	{name="a", 	top=4000},
+	{name="a+", top=4500},
+	{name="a++",top=5000},
+	{name="s", 	top=5500},
+	{name="s+", top=6000},
+	{name="s++",top=nil}
+}
+function score2rank(score)
+	for r in all(ranks) do
+		if r.top==nil or r.top > score then	
+			-- (where r.top==nil means we've reached the top of the scale,
+			--	which doesn't have a "top" field set.
+			return r.name
+		end
+	end
 end
 
 lost_anim_dur=60
-function draw_usr_msg(phase,rounds,ptime,last_move)
+recap_msg_dur=10
+recap_msg_depth=3
+function draw_usr_msg(phase,rounds,ptime,last_move,score)
 	if phase=="lost" then
 		local depth=t(	ptime<lost_anim_dur,
 						flr(-3.5*sin(ptime/lost_anim_dur/2)),
 						0)
 		locoprint(	"lost",
-					tile_off_x+(last_move.x-1)*tile_side+depth+5,
-					tile_off_y+(last_move.y-1)*tile_side+depth+10,
-					depth)
+					tile_off_x+(last_move.x-1)*tile_side+5,
+					tile_off_y+(last_move.y-1)*tile_side+10,
+					depth,
+					{border=8,color_1=7,color_2=12})
 	elseif phase=="recap" then
-	 	print(	"rounds played: "..rounds,
-	  			screen_side/4,
-				screen_side/4+10,
-				7)
+		local recap_messages={
+			{msg="rounds played", start_frame=10, x=13, y=15, color={border=8,color_1=7,color_2=7}},
+			{msg=rounds, start_frame=20, x=13, y=31, color={border=8,color_1=7,color_2=12}},
+			{msg="score", start_frame=30, x=13, y=47, color={border=8,color_1=7,color_2=7}},
+			{msg=score, start_frame=40, x=13, y=63, color={border=8,color_1=7,color_2=12}},
+			{msg="rank", start_frame=50, x=13, y=79, color={border=8,color_1=7,color_2=7}},
+			{msg=score2rank(score), start_frame=60, x=13, y=95, color={border=8,color_1=7,color_2=12}}}
+			-- note: when changing recap_messages.start_frame, recalculate global "recap_cooldown" 
+		for m in all(recap_messages) do
+			if ptime>m.start_frame then
+				locoprint(	m.msg, m.x, m.y,
+							cla(recap_msg_depth*(ptime-m.start_frame)/recap_msg_dur,0,recap_msg_depth),
+							m.color)
+			end
+		end
 		if ptime>recap_cooldown then
-			print(	"press 🅾️/❎ to restart",
-					screen_side/4,
-					screen_side/4+20,
-					7)
+			hprint("press 🅾️/❎ to continue", 16, 115, 7, 8)
 		end
 	elseif phase=="won" then
 		local depth=flr(-3.5*sin(ptime/won_cooldown/2))
 	 	locoprint(	"won",
-		 			tile_off_x+(last_move.x-1)*tile_side+depth+5,
-					tile_off_y+(last_move.y-1)*tile_side+depth+10,
-					depth)
+		 			tile_off_x+(last_move.x-1)*tile_side+5,
+					tile_off_y+(last_move.y-1)*tile_side+10,
+					depth,
+					{border=8,color_1=7,color_2=12})
 	elseif phase=="tie_cpu"	or phase=="tie_player" then
 		local depth=flr(-3.5*sin(ptime/tie_cooldown/2))
 	 	locoprint(	"tie",
-		 			tile_off_x+(last_move.x-1)*tile_side+depth+5,
-					tile_off_y+(last_move.y-1)*tile_side+depth+10,
-					depth)
+		 			tile_off_x+(last_move.x-1)*tile_side+5,
+					tile_off_y+(last_move.y-1)*tile_side+10,
+					depth,
+					{border=8,color_1=7,color_2=12})
  	end
 end
 
@@ -1302,7 +1340,7 @@ function _draw()
 			draw_score(gs.score)
 		end
 		fillp(0)
-		draw_usr_msg(gs.phase,gs.rounds,gs.ptimec,gs.last_move)
+		draw_usr_msg(gs.phase,gs.rounds,gs.ptimec,gs.last_move,gs.score)
 		--draw_info(gs.diff,gs.rate,gs.score)
 	end
 	if error>0 then
