@@ -2,13 +2,6 @@ pico-8 cartridge // http://www.pico-8.com
 version 33
 __lua__
 -- state def./constants
--- mejorar sombras
--- agregar calculo de nivel y barra gui
--- ajustar curvas diff y rate
--- penalizar oportunidad desaprovechada
--- color barra ai y timer que cambie/parpadee
--- efecto:prob que aumenta de que ficha se mueva de su sitio
--- probar con alguien,anadir efectos,anadir menu,publicar
 gs=nil -- game state
 ms=nil -- menu state
 -- implicit game state: variables that can be fully derived from
@@ -437,8 +430,8 @@ function find_rnd_empty(b)
  return t(#empty_spaces==0,nil,rnd(empty_spaces))
 end
 
--- simplified crowley siegler
--- diff(iculty): o..255
+-- simplified from crowley siegler paper
+-- diff(iculty): 0..255
 -- prob.of choosing optimal move
 -- except winning or blocking
 -- (255=always choose optimal)
