@@ -56,7 +56,6 @@ control_rz=0 -- control return to zero
 max_blinky_off=tile_side*0.2
 blinky_off_speed=0.5
 max_timer=255
-base_score_per_level=2500
 score_digits=5
 digit_sprite_base=0x70
 score_lsd_x=2
@@ -84,6 +83,7 @@ title_scroll_message_width=print(title_scroll_message_str,tscrollx,screen_w,scre
 sparkle_sprite_1=12
 sparkle_sprite_2=28
 number_of_bgfx=2 -- number of different background effects
+max_cpu_diff=230 -- cpu never gets perfect (that'd be 255)
 
 function has_value(t,v) -- table,value
  for i,val in ipairs(t) do
@@ -225,7 +225,8 @@ function make_init_ms()
 end
 
 function _init()
-	pal(5, 0x05, 2) 
+	pal(5, 0x05, 2)
+	poke(0x5f5c, 255) -- make btnp never repeat keypresses
 	gs=make_init_gs()
 	ms=make_init_ms()
 end
@@ -526,12 +527,12 @@ function next_ptime(ptime,rst,is_cyclic)
 end
 
 function next_diff(diff,round_restart)
- n_diff=diff+diff_inc
+ 	n_diff=diff+diff_inc
 	if round_restart then
-	 return(t(n_diff>255,255,n_diff))
- else
-  return diff
- end
+	 	return(t(n_diff>max_cpu_diff,max_cpu_diff,n_diff))
+ 	else
+  		return diff
+ 	end
 end
 
 function next_note(note,move)
@@ -566,11 +567,6 @@ function next_dseed(dseed,change)
           dseed)
 end
 
-function get_level(score)
---	base_score_per_level
-	
-end
-
 function update_gs(gs,input)
 	local n_cpos=
 		t(control_rz,
@@ -591,7 +587,6 @@ function update_gs(gs,input)
 		gs.timer,new_board,gs.ptime,
 		input.btnp_🅾️ or input.btnp_❎,  
 		cpu_win_line!=nil,player_win_line!=nil)
-	printh(new_phase.." "..gs.ptime)
 	local game_start=(new_phase!=gs.phase) and (gs.phase=="menu" or gs.phase=="lost");
 	local round_restart=
 		(new_phase!=gs.phase) and
@@ -966,25 +961,28 @@ end
 
 ranks={
 	{name="e", 	top=500},
-	{name="d", 	top=1000},
-	{name="c", 	top=1500},
-	{name="b-", top=2000},
-	{name="b", 	top=2500},
-	{name="b+", top=3000},
-	{name="a-", top=3500},
-	{name="a", 	top=4000},
-	{name="a+", top=4500},
-	{name="a++",top=5000},
-	{name="s", 	top=5500},
-	{name="s+", top=6000},
-	{name="s++",top=nil}
+	{name="d", 	top=2000},
+	{name="c", 	top=3000},
+	{name="b-", top=4000},
+	{name="b", 	top=6500},
+	{name="b+", top=9000},
+	{name="a-", top=11500},
+	{name="a", 	top=14000},
+	{name="a+", top=20000},
+	{name="a++",top=26000},
+	{name="s", 	top=28000},
+	{name="s+", top=30000},
+	{name="s++",top=max_int},
+	{name="perfect-max",top=nil}
 }
 function score2rank(score)
-	for r in all(ranks) do
-		if r.top==nil or r.top > score then	
-			-- (where r.top==nil means we've reached the top of the scale,
-			--	which doesn't have a "top" field set.
-			return r.name
+	if score<0 then	--	score var has overflowed
+		return ranks[#ranks].name
+	else
+		for r in all(ranks) do
+			if r.top > score then	
+				return r.name
+			end
 		end
 	end
 end
@@ -1007,7 +1005,7 @@ function draw_usr_msg(phase,rounds,ptime,last_move,score)
 			{msg="rounds played", start_frame=10, x=13, y=15, color={border=8,color_1=7,color_2=7}},
 			{msg=rounds, start_frame=20, x=13, y=31, color={border=8,color_1=7,color_2=12}},
 			{msg="score", start_frame=30, x=13, y=47, color={border=8,color_1=7,color_2=7}},
-			{msg=score, start_frame=40, x=13, y=63, color={border=8,color_1=7,color_2=12}},
+			{msg=t(score<0, "maximum", score), start_frame=40, x=13, y=63, color={border=8,color_1=7,color_2=12}},
 			{msg="rank", start_frame=50, x=13, y=79, color={border=8,color_1=7,color_2=7}},
 			{msg=score2rank(score), start_frame=60, x=13, y=95, color={border=8,color_1=7,color_2=12}}}
 			-- note: when changing recap_messages.start_frame, recalculate global "recap_cooldown" 
@@ -1052,34 +1050,42 @@ function draw_blinky(b,blink_phase)
 end
 
 function draw_ai_level(d)
- rect2(
+ 	rect2(
 		r_sidebar_x,
 		sidebar_y,
 		sidebar_w,
 		sidebar_h,
 		8)
-	local ai_bar_len=d/255*(sidebar_h-2)
+	local ai_bar_len=d/max_cpu_diff*(sidebar_h-2)
 	rectfill2(
-	 r_sidebar_x+1,
-	 sidebar_y+sidebar_h-1-ai_bar_len,
-	 sidebar_w-2,
-	 ai_bar_len,
-	 14)	
+		r_sidebar_x+1,
+		sidebar_y+sidebar_h-1-ai_bar_len,
+		sidebar_w-2,
+		ai_bar_len,
+		14)	
 	sspr(120,0,8,64,r_sidebar_x+2,
-	 sidebar_y+sidebar_h-64-1)
+	 	sidebar_y+sidebar_h-64-1)
 end
 
 -- integer to chars, zero-padded
-function draw_int_to_chars(i,digits) -- integer
- local iter=0 -- iterations
-	while iter<digits	do
-	 local d=i%10 -- digit
-		i-=d
-		i/=10
-		iter+=1
-		spr(digit_sprite_base+d,
-					 score_lsd_x,
-					 score_lsd_y+iter*7)
+function draw_int_to_chars(score,digits) -- integer
+ 	local iter=0 -- iterations
+	if score<0 then	-- score var has overflowed
+		for i=1,digits do
+			spr(digit_sprite_base+9,
+						score_lsd_x,
+						score_lsd_y+i*7)
+		end
+	else
+		while iter<digits do
+			local d=score%10 -- digit
+			score-=d
+			score/=10
+			iter+=1
+			spr(digit_sprite_base+d,
+						score_lsd_x,
+						score_lsd_y+iter*7)
+		end
 	end
 end
 
@@ -1307,34 +1313,38 @@ function draw_bg_grid(t)
 end
 
 bgfx_table={[0]=draw_bg_grid, draw_bg_circles}
+function draw_game(gs)
+	cls(0)
+	bgfx_table[ms.bgfx](time())
+	if gs.phase=="recap" then
+		local vanish_progress=gs.ptime/lost_vanish_dur
+		fillp(0b.1+bayer_4x4_fillp_lut[cla(flr(16*vanish_progress),0,16)])
+	end
+	if not (gs.phase=="recap" and gs.ptime>lost_vanish_dur) then
+		draw_board()
+		if gs.phase=="cpu"
+		or gs.phase=="player" then
+			draw_cursor(gs.cursor_pos,gs.phase,gs.ptimec)
+		end
+		local win_line=t(player_win_line==nil,cpu_win_line,player_win_line)
+		draw_pieces(gs.board,gs.dseed,win_line,gs.ptime)
+		if gs.blinky!=nil then
+			draw_blinky(gs.blinky,0) --gs.ptimec&0x01)
+		end
+		draw_timer(gs.timer)
+		draw_ai_levelup_indicator(gs.rtime, gs.first_round)
+		draw_ai_level(gs.diff)
+		draw_score(gs.score)
+	end
+	fillp(0)
+	draw_usr_msg(gs.phase,gs.rounds,gs.ptimec,gs.last_move,gs.score)
+end
+
 function _draw()
 	if ms.phase=="main" then
 		draw_menu(title_phase,ms.ptime,ms.ptimec,ms.dseed,ms.tscrollx)
 	elseif ms.phase=="playing" then
-		cls(0)
-		bgfx_table[ms.bgfx](time())
-		if gs.phase=="recap" then
-			local vanish_progress=gs.ptime/lost_vanish_dur
-			fillp(0b.1+bayer_4x4_fillp_lut[cla(flr(16*vanish_progress),0,16)])
-		end
-		if not (gs.phase=="recap" and gs.ptime>lost_vanish_dur) then
-			draw_board()
-			if gs.phase=="cpu"
-			or gs.phase=="player" then
-				draw_cursor(gs.cursor_pos,gs.phase,gs.ptimec)
-			end
-			local win_line=t(player_win_line==nil,cpu_win_line,player_win_line)
-			draw_pieces(gs.board,gs.dseed,win_line,gs.ptime)
-			if gs.blinky!=nil then
-				draw_blinky(gs.blinky,0) --gs.ptimec&0x01)
-			end
-			draw_timer(gs.timer)
-			draw_ai_levelup_indicator(gs.rtime, gs.first_round)
-			draw_ai_level(gs.diff)
-			draw_score(gs.score)
-		end
-		fillp(0)
-		draw_usr_msg(gs.phase,gs.rounds,gs.ptimec,gs.last_move,gs.score)
+		draw_game(gs)
 		--draw_info(gs.diff,gs.rate,gs.score)
 	end
 	if error>0 then
