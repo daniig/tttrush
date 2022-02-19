@@ -84,6 +84,8 @@ sparkle_sprite_1=12
 sparkle_sprite_2=28
 number_of_bgfx=2 -- number of different background effects
 max_cpu_diff=230 -- cpu never gets perfect (that'd be 255)
+sfx_ch = 3
+music_ch_mask = 0b111
 
 function has_value(t,v) -- table,value
  for i,val in ipairs(t) do
@@ -114,7 +116,6 @@ function make_gs(
 	rounds,		-- num.of played rounds
 	ptime,		-- time elapsed in current phase (max 32767 frames)
 	ptimec,		-- like ptime but cyclic
-	note,		-- last note played
 	prev_phase, -- previous phase
 	blinky,		-- flashy score text
 	score,
@@ -137,7 +138,6 @@ function make_gs(
  if type(rounds)!="number" then error=8 end
  if type(ptime)!="number" then error=9 end
  if type(ptimec)!="number" then error=9 end
- if type(note)!="number" then error=10 end
  if type(prev_phase)!="string" then error=11 end
  if blinky!=nil and (blinky.pos.x==nil or blinky.pos.y==nil or blinky.txt==nil or blinky.off==nil) then error=12 end
  if type(score)!="number" then error=13 end
@@ -156,7 +156,6 @@ function make_gs(
 		rounds=rounds,
 		ptime=ptime,
 		ptimec=ptimec,
-		note=note,
 		prev_phase=prev_phase,
 		blinky=blinky,
 		score=score,
@@ -176,7 +175,6 @@ function make_init_gs()
 			255,
 			"cpu",
 			initial_rate,
-			0,
 			0,
 			0,
 			0,
@@ -535,14 +533,6 @@ function next_diff(diff,round_restart)
  	end
 end
 
-function next_note(note,move)
-	if move!=nil then
-		return t(note==num_notes-1,0,note+1)
- else
- 	return note
- end
-end
-
 function next_blinky(b)
 	if b==nil then
 		return nil
@@ -613,7 +603,6 @@ function update_gs(gs,input)
 		gs.rounds+t(round_restart,1,0),
 		next_ptime(gs.ptime,gs.phase!=new_phase,false),
 		next_ptime(gs.ptimec,gs.phase!=new_phase,true),
-		next_note(gs.note,current_move),
 		gs.phase,
 		t(new_blinky==nil,
 		  t(gs.blinky==nil,
@@ -677,12 +666,17 @@ end
 
 function _update()
  	input=make_input()
+	local old_ms_phase=ms.phase
  	ms=update_ms(ms,gs,input)
- 	if ms.phase=="main" and (input.btnp_❎ or input.btnp_🅾️) then
+ 	if old_ms_phase=="main" and ms.phase=="playing" then
+	 	music(0, nil, music_ch_mask)
  		gs=make_init_gs() 
  	elseif ms.phase=="playing" then
 		gs=update_gs(gs,input)
-		fire_sfx(gs,gs.prev_phase)
+		fire_sfx(gs.phase,gs.prev_phase,input,gs.ptime)
+		if gs.phase=="recap" and gs.ptime==0 then
+			music(-1, 2000)
+		end
 	end
 end
 -->8
@@ -990,6 +984,14 @@ end
 lost_anim_dur=60
 recap_msg_dur=10
 recap_msg_depth=3
+recap_messages={
+	{msg="rounds played", start_frame=10, x=13, y=15, color={border=8,color_1=7,color_2=7}},
+	{msg="((rounds))", start_frame=20, x=13, y=31, color={border=8,color_1=7,color_2=12}},
+	{msg="score", start_frame=30, x=13, y=47, color={border=8,color_1=7,color_2=7}},
+	{msg="((t(score<0, \"maximum\", score)))", start_frame=40, x=13, y=63, color={border=8,color_1=7,color_2=12}},
+	{msg="rank", start_frame=50, x=13, y=79, color={border=8,color_1=7,color_2=7}},
+	{msg="((score2rank(score)))", start_frame=60, x=13, y=95, color={border=8,color_1=7,color_2=12}}}
+	-- note: when changing recap_messages.start_frame, recalculate global "recap_cooldown" 
 function draw_usr_msg(phase,rounds,ptime,last_move,score)
 	if phase=="lost" then
 		local depth=t(	ptime<lost_anim_dur,
@@ -1001,14 +1003,9 @@ function draw_usr_msg(phase,rounds,ptime,last_move,score)
 					depth,
 					{border=8,color_1=7,color_2=12})
 	elseif phase=="recap" then
-		local recap_messages={
-			{msg="rounds played", start_frame=10, x=13, y=15, color={border=8,color_1=7,color_2=7}},
-			{msg=rounds, start_frame=20, x=13, y=31, color={border=8,color_1=7,color_2=12}},
-			{msg="score", start_frame=30, x=13, y=47, color={border=8,color_1=7,color_2=7}},
-			{msg=t(score<0, "maximum", score), start_frame=40, x=13, y=63, color={border=8,color_1=7,color_2=12}},
-			{msg="rank", start_frame=50, x=13, y=79, color={border=8,color_1=7,color_2=7}},
-			{msg=score2rank(score), start_frame=60, x=13, y=95, color={border=8,color_1=7,color_2=12}}}
-			-- note: when changing recap_messages.start_frame, recalculate global "recap_cooldown" 
+		recap_messages[2].msg=rounds
+		recap_messages[4].msg=t(score<0, "maximum", score)
+		recap_messages[6].msg=score2rank(score)
 		for m in all(recap_messages) do
 			if ptime>m.start_frame then
 				locoprint(	m.msg, m.x, m.y,
@@ -1353,28 +1350,46 @@ function _draw()
 end
 -->8
 -- sfx
-num_notes=8
-move_ding_ch=0
-move_sfx_num=2 -- 0 and 1
-ding_len=8
-
+sfx_player_move = 2
+sfx_cpu_move = 3
+sfx_lost = 16
+sfx_won = 17
+sfx_tie = 18
+sfx_cursor_move = 5
+sfx_recap_noise = 4
 --	sfx n [ch [offset [length]]]
-function fire_sfx(gs,old_phase)
-	local note=t(gs.note==0,7,gs.note-1)
-	local tile_set=
-		(gs.phase=="cpu" and old_phase=="player")
-		or	(gs.phase=="player" and old_phase=="cpu")
-		or (gs.phase=="won" and old_phase=="player")  		
-  or (gs.phase=="lost" and old_phase=="cpu")
-  or ((gs.phase=="tie_cpu" or gs.phase=="tie_player")
-      and gs.ptime==0)
- if tile_set then
- 	sfx(t(note<4,0,1),
- 	    move_ding_ch,
- 	    (note*8)%32,
- 	    ding_len)
- end
+function fire_sfx(current_phase,old_phase,input,ptime)
+	local phase_changed = (current_phase != old_phase)
+	-- player and cpu move
+	if current_phase == "cpu" and old_phase == "player" then
+		sfx(sfx_player_move, sfx_ch)
+	end
+	if current_phase == "player" and old_phase == "cpu" then
+		sfx(sfx_cpu_move, sfx_ch)
+	end
+	-- lose, win and tie
+	if phase_changed and current_phase == "lost" then
+		sfx(sfx_lost, sfx_ch)
+	elseif phase_changed and current_phase == "won" then
+		sfx(sfx_won, sfx_ch)
+	elseif phase_changed and (current_phase == "tie_player" or current_phase == "tie_cpu") then
+		sfx(sfx_tie, sfx_ch)
+	end
+	-- cursor move
+	if (current_phase=="player" or current_phase=="cpu") and
+	(input.btnp_➡️ or input.btnp_⬆️ or input.btnp_⬅️ or input.btnp_⬇️) then
+		sfx(sfx_cursor_move, sfx_ch)
+	end
+	-- result sfx
+	if current_phase=="recap" then
+		for m in all(recap_messages) do
+			if ptime==m.start_frame then
+				sfx(sfx_recap_noise, sfx_ch)
+			end
+		end
+	end
 end
+
 __gfx__
 0000000099999999bbbbbbbb00000000000000000000000000000000000000000000000000000000009ff7000000000070000000000000000000000000000000
 0000000099999999bbbbbbbb00000000000000000000000000000000003bb700000000070000000009f777700000000007000070000000000000000000000007
@@ -1592,46 +1607,47 @@ __sfx__
 050e00000535510300103050030000000000000000000000173001a1000c3551a1050f3551c10011355000000a3551a1001a3001c1001c300101000e300000000000000000000000000000000000000000000000
 050e00000535511300103050030000000000000000000000173001a1000c355183000f355133000c355000000f355000000000000000000000000000000000000000000000000000000000000000000000000000
 010e0000000000000011325113250c3250f3000f3250f300000000000011325113250c3250f3000f3250f30000000000000f3250f3250a3250f3000d3250d30000000000000f3250f3250a3250f3000d3250d300
-011c000011324113201132011320113201132511300113000f3240f3200f3200f3200f3200f325000040000400004000040000400004000040000400004000040000000000000000000000000000000000000000
-011c00001132411320113201132011320113250000000000163241632016320163201632016325000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+011c000011124111201112011120111221112511300113000f1240f1200f1200f1200f1220f125000040000400004000040000400004000040000400004000040000000000000000000000000000000000000000
+011c00001112411120111201112011122111250010000100161241612016120161201612216125001000010000100001000010000100001000010000100001000010000100001000010000100001000010000100
 010e00000050500505115550050500505115051155500505005050c5050c555005050f55500505005050050500505005050f5550050500505005050f5550050500505005050a555005050d555005050050500000
 001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 010a00000843607436054360443600435004000040000400004000040000400004000040000400004000040000400004000040000400004000040000400004000040000400000000000000000000000000000000
 010a00000045504455074550c45500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 010a00000c455074550c4550745500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+011c000011124111201112011120111221112500100001000a1240a1200a1200a1200a1220a125001040010000100001000010000100001000010000100001000010000100001000010000100001000010000100
 __music__
-01 08094b44
-00 080a4344
+01 08494b44
+00 08494b44
+00 08494b44
+00 08494b44
+00 08094b44
+00 08094b44
+00 08094b44
+00 080a4b44
+00 08494b44
+00 08494b44
+00 08494b44
+00 08494b44
+00 080b4b44
+00 080b4b44
+00 080b4b44
+00 080b4b44
+00 08494b44
+00 08494b44
+00 08494b44
+00 08494b44
+00 08090b44
+00 08090b44
 00 08090b44
 00 080a0b44
-00 08090c0b
-00 080a0d0b
+00 08090c44
+00 08091344
+00 08090c44
+00 080a0d44
 00 08090e44
-00 080a0e0c
-00 40424344
-00 40424344
-00 40424344
-00 40424344
-00 40424344
-00 40424344
-00 40424344
-00 40424344
-00 40424344
-00 40424344
-00 40424344
-00 40424344
-00 40424344
-00 40424344
-00 40424344
-00 40424344
-00 40424344
-00 40424344
-00 40424344
-00 40424344
-00 40424344
-00 40424344
-00 40424344
-00 40424344
+00 08090e44
+00 08090e44
+02 080a0e44
 00 40424344
 00 40424344
 00 40424344
