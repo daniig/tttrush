@@ -3,6 +3,7 @@ version 33
 __lua__
 -- tic tac toe rush
 -- (c) 2022 @danisggg
+-- todo: full attract mode with tutorial
 -- state def./constants
 gs=nil -- game state
 ms=nil -- menu state
@@ -78,9 +79,9 @@ max_int=32767
 ai_levelup_indicator_cooldown=30
 ai_levelup_spr=20
 fade_white_to_dark_blue={7,6,13,1}
-title_scroll_message_str="hang in against the cpu for as long as possible 😐😐😐 choose your move before the time runs out ⧗⧗⧗ fight an increasingly tough cpu 🐱🐱🐱 don't give up ∧∧∧ 2022 danisggg ☉☉☉ "
-title_scroll_message_length=168+3+3+3+3+3 -- special chars are double-width, we can't use lua's string length
-title_scroll_message_speed=2 -- pixels per 1/30 second
+title_scroll_message_str="hang in for as long as possible 😐😐😐 choose your move quickly ⧗⧗⧗ fight an increasingly tough cpu 🐱🐱🐱 don't give up ∧∧∧ 2022 danisggg ☉☉☉ "
+title_scroll_message_length=137+3+3+3+3+3 -- special chars are double-width, we can't use lua's string length
+title_scroll_message_speed=1 -- pixels per 1/30 second
 title_scroll_message_width=print(title_scroll_message_str,tscrollx,screen_w,screen_h) -- prints off-screen just to calculate printed string length
 sparkle_sprite_1=12
 sparkle_sprite_2=28
@@ -124,7 +125,8 @@ function make_gs(
 	dseed,		-- piece drawing rnd seed
 	rtime,    	-- time elapsed in current round (max 32767 frames)
 	first_round,-- first round of the game after main menu
-	last_move   -- last move performed, either by AI or human (or cat, etc.)
+	last_move,  -- last move performed, either by ai or human (or cat, etc.)
+	result		-- game result: "lost" or "timeout"
 )
  --rudimentary typechecking
  if type(cursor_pos)!="table" then error=1 end
@@ -147,6 +149,7 @@ function make_gs(
  if type(rtime)!="number" then error=15 end
  if type(first_round)!="boolean" then error=16 end
  if (last_move!=nil and (last_move.x==nil or last_move.y==nil or type(last_move.x)!="number" or type(last_move.y)!="number")) then error=17 end
+ if type(result)!="string" then error=18 end
  --	
 	return {
 		cursor_pos=cursor_pos,
@@ -164,7 +167,8 @@ function make_gs(
 		dseed=dseed,
 		rtime=rtime,
 		first_round=first_round,
-		last_move=last_move
+		last_move=last_move,
+		result=result
 	}
 end
 
@@ -186,7 +190,8 @@ function make_init_gs()
 			flr(rnd()*30000),
 			0,
 			true,
-			nil
+			nil,
+			""
 		)
 end
 
@@ -595,6 +600,14 @@ function update_gs(gs,input)
 		t(gs.phase=="player" and current_move!=nil,
 		  make_blinky(current_move,tostr(score_inc),0),
 		  nil)
+	local result=""
+    if gs.phase=="player" and gs.timer<=0 then
+		result="timeout"
+	elseif gs.phase=="cpu" and cpu_win_line!=nil then
+		result="lost"
+	else
+		result=gs.result
+	end
 	return make_gs(
 		n_cpos,
 		t(round_restart,make_empty_board(),new_board),
@@ -623,7 +636,7 @@ function update_gs(gs,input)
 		  false,
 		  gs.first_round),
 		t(current_move, current_move, gs.last_move),
-		gs.bgfx
+		result
 	)
 end
 
@@ -997,12 +1010,15 @@ recap_messages={
 	{msg="rank", start_frame=50, x=13, y=79, color={border=8,color_1=7,color_2=7}},
 	{msg="((score2rank(score)))", start_frame=60, x=13, y=95, color={border=8,color_1=7,color_2=12}}}
 	-- note: when changing recap_messages.start_frame, recalculate global "recap_cooldown" 
-function draw_usr_msg(phase,rounds,ptime,last_move,score)
+function draw_usr_msg(phase,rounds,ptime,last_move,score,result)
+	if last_move==nil then
+		last_move={x=1,y=1}
+	end
 	if phase=="lost" then
 		local depth=t(	ptime<lost_anim_dur,
 						flr(-3.5*sin(ptime/lost_anim_dur/2)),
 						0)
-		locoprint(	"lost",
+		locoprint(	t(result=="timeout","t.out","lost"),
 					tile_off_x+(last_move.x-1)*tile_side+5,
 					tile_off_y+(last_move.y-1)*tile_side+10,
 					depth,
@@ -1339,7 +1355,7 @@ function draw_game(gs)
 		draw_score(gs.score)
 	end
 	fillp(0)
-	draw_usr_msg(gs.phase,gs.rounds,gs.ptimec,gs.last_move,gs.score)
+	draw_usr_msg(gs.phase,gs.rounds,gs.ptimec,gs.last_move,gs.score,gs.result)
 end
 
 function _draw()
