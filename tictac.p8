@@ -40,7 +40,7 @@ sidebar_y=tile_off_y
 sidebar_h=tile_side*3
 sidebar_w=tile_off_x-4
 player_mark="❎"
-cpu_mark="🅾️"
+cpu_p2_mark="🅾️"
 initial_rate=1
 rate_coeff=1.075
 diff_inc=11
@@ -382,7 +382,7 @@ end
 
 function put_mark(board,phase,move)
 	if move!=nil then
-		board[move.x][move.y]=t(phase=="player",player_mark,cpu_mark)
+		board[move.x][move.y]=t(phase=="player",player_mark,cpu_p2_mark)
 	end	
 	return board
 end	
@@ -390,7 +390,7 @@ end
 function get_player_move(cpos,board,input,p2_turn)
 	local pressed=t(
 		p2_turn,
-		input.btnp_🅾️2 or input.btnp_❎2
+		input.btnp_🅾️2 or input.btnp_❎2,
 		input.btnp_🅾️ or input.btnp_❎)
 	if pressed and (board[cpos.x][cpos.y]==nil)	then
 		return cpos
@@ -469,7 +469,7 @@ end
 function get_cpu_move(board,diff)
  local get_right=rnd(255)<=diff
  --printh("---------------")
-	local w=winning_move(board,cpu_mark)
+	local w=winning_move(board,cpu_p2_mark)
 	if w!=nil and get_right then
 		--printh("winning")
 		return w
@@ -497,7 +497,9 @@ function get_cpu_move(board,diff)
 	return nil
 end
 
-function next_phase(phase,moved,timer,new_board,ptime,btn_pressed,cpu_won,player_won)
+function next_phase(phase,moved,timer,new_board,ptime,input,cpu_won,player_won,vs_2p)
+	local btn_pressed = input.btnp_🅾️ or input.btnp_❎ or
+		(vs_2p and (input.btnp_🅾️2 or input.btnp_❎2))
  	if phase=="player" then
   		if player_won then 
    			return "won"
@@ -506,7 +508,7 @@ function next_phase(phase,moved,timer,new_board,ptime,btn_pressed,cpu_won,player
   		elseif board_full(new_board) then
    			return "tie_player"
   		else
-		 	return t(moved,"cpu","player")
+		 	return t(vs_2p,"player",t(moved,"cpu","player"))
   		end		
 	elseif phase=="cpu" then
 	 	if cpu_won then
@@ -521,11 +523,17 @@ function next_phase(phase,moved,timer,new_board,ptime,btn_pressed,cpu_won,player
 	elseif phase=="recap" then
 		return "recap"
 	elseif phase=="won" then
-		return t(ptime>won_cooldown,"cpu",phase)
+		if vs_2p then
+			return t(btn_pressed and ptime>lost_cooldown,"recap","won")
+		else
+			return t(ptime>won_cooldown,"cpu",phase)
+		end
 	elseif phase=="tie_cpu" then
 		return t(ptime>tie_cooldown,"player",phase)
 	elseif phase=="tie_player" then
-	 	return t(ptime>tie_cooldown,"cpu",phase)
+	 	return t(ptime>tie_cooldown,
+			t(vs_2p,"tie_player","cpu"),
+			phase)
 	else
 		return phase										 
 	end
@@ -595,20 +603,21 @@ function update_gs(gs,input)
 		  keys2cursor_pos(input),
 		  get_new_curpos(gs.cursor_pos,input))
 	if gs.phase=="player" then
-		current_move=get_player_move(gs.cursor_pos,gs.board,input)
+		current_move=get_player_move(gs.cursor_pos,gs.board,input,gs.p2_turn)
 	elseif (gs.phase=="cpu" and (gs.timer<240 or gs.ptime>60)) then -- a little delay
 		current_move=get_cpu_move(gs.board,gs.diff)
 	else
 		current_move=nil
 	end
 	new_board=put_mark(gs.board,gs.phase,current_move)
-	player_win_line=check_won(new_board,player_mark)
-	cpu_win_line=check_won(new_board,cpu_mark)
+	player_win_line=check_won(new_board,t(gs.p2_turn,cpu_p2_mark,player_mark))
+	cpu_win_line=check_won(new_board,cpu_p2_mark)
 	new_phase=next_phase(
 		gs.phase,current_move!=nil,
 		gs.timer,new_board,gs.ptime,
-		input.btnp_🅾️ or input.btnp_❎,  
-		cpu_win_line!=nil,player_win_line!=nil)
+		input,
+		cpu_win_line!=nil,player_win_line!=nil,
+		gs.vs_2p)
 	local game_start=(new_phase!=gs.phase) and (gs.phase=="menu" or gs.phase=="lost");
 	local round_restart=
 		(new_phase!=gs.phase) and
