@@ -89,6 +89,8 @@ number_of_bgfx=2 -- number of different background effects
 max_cpu_diff=230 -- cpu never gets perfect (that'd be 255)
 sfx_ch = 3
 music_ch_mask = 0b111
+vs_cpu = 0 	-- gametype 0
+vs_2p = 1	-- gametype 1
 
 function has_value(t,v) -- table,value
  for i,val in ipairs(t) do
@@ -126,7 +128,9 @@ function make_gs(
 	rtime,    	-- time elapsed in current round (max 32767 frames)
 	first_round,-- first round of the game after main menu
 	last_move,  -- last move performed, either by ai or human (or cat, etc.)
-	result		-- game result: "lost" or "timeout"
+	result,		-- game result: "lost" or "timeout"
+	p2_turn,	-- only used on vs 2p games
+	gametype	-- 0: vs cpu, 1: vs 2p
 )
  --rudimentary typechecking
  if type(cursor_pos)!="table" then error=1 end
@@ -150,6 +154,8 @@ function make_gs(
  if type(first_round)!="boolean" then error=16 end
  if (last_move!=nil and (last_move.x==nil or last_move.y==nil or type(last_move.x)!="number" or type(last_move.y)!="number")) then error=17 end
  if type(result)!="string" then error=18 end
+ if type(p2_turn)!="boolean" then error=19 end
+ if type(gametype)!="number" and (gametype!=vs_cpu or gametype!=vs_2p) then error=20 end
  --	
 	return {
 		cursor_pos=cursor_pos,
@@ -168,7 +174,9 @@ function make_gs(
 		rtime=rtime,
 		first_round=first_round,
 		last_move=last_move,
-		result=result
+		result=result,
+		p2_turn=p2_turn
+		gametype=gametype
 	}
 end
 
@@ -191,7 +199,9 @@ function make_init_gs()
 			0,
 			true,
 			nil,
-			""
+			"",
+			false,
+			vs_2p
 		)
 end
 
@@ -287,6 +297,18 @@ function make_input()
 		btnp_⬇️=btnp(⬇️),
 		btnp_🅾️=btnp(🅾️),
 		btnp_❎=btnp(❎),
+		btn_⬅️2=btn(⬅️,1),
+		btn_➡️2=btn(➡️,1),
+		btn_⬆️2=btn(⬆️,1),
+		btn_⬇️2=btn(⬇️,1),
+		btn_🅾️2=btn(🅾️,1),
+		btn_❎2=btn(❎,1),
+		btnp_⬅️2=btnp(⬅️,1),
+		btnp_➡️2=btnp(➡️,1),
+		btnp_⬆️2=btnp(⬆️,1),
+		btnp_⬇️2=btnp(⬇️,1),
+		btnp_🅾️2=btnp(🅾️,1),
+		btnp_❎2=btnp(❎,1)
 	}
 end
 
@@ -322,28 +344,28 @@ corners={
 	{x=1,y=3},{x=3,y=3}
 }
 
-function keys2cursor_pos(input)
+function keys2cursor_pos(input,p2_turn)
+	local l=t(p2_turn,input.btn_⬅️2,input.btn_⬅️)
+	local r=t(p2_turn,input.btn_➡️2,input.btn_➡️)
+	local u=t(p2_turn,input.btn_⬆️2,input.btn_⬆️)
+	local d=t(p2_turn,input.btn_⬇️2,input.btn_⬇️)
 	return {
-		x=t(input.btn_⬅️,
-		    1,
-		    t(input.btn_➡️,3,2)),
-		y=t(input.btn_⬆️,
-		    1,
-		    t(input.btn_⬇️,3,2))
+		x=t(l, 1, t(r,3,2)),
+		y=t(u, 1, t(d,3,2))
 	}
 end
 
-function get_new_curpos(cp,input)
-	local xd=t(input.btnp_⬅️,
-	           -1,
-	           t(input.btnp_➡️,1,0))
-	local yd=t(input.btnp_⬆️,
-	           -1,
-	           t(input.btnp_⬇️,1,0))
- return {
-  x=cla(cp.x+xd,1,3),
-  y=cla(cp.y+yd,1,3)
- }
+function get_new_curpos(cp,input,p2_turn)
+	local l=t(p2_turn,input.btn_⬅️2,input.btn_⬅️)
+	local r=t(p2_turn,input.btn_➡️2,input.btn_➡️)
+	local u=t(p2_turn,input.btn_⬆️2,input.btn_⬆️)
+	local d=t(p2_turn,input.btn_⬇️2,input.btn_⬇️)
+	local xd=t(l, -1, t(r,1,0))
+	local yd=t(u, -1, t(d,1,0))
+	return {
+		x=cla(cp.x+xd,1,3),
+		y=cla(cp.y+yd,1,3)
+	}
 end	
 
 function board_full(board)
@@ -365,12 +387,15 @@ function put_mark(board,phase,move)
 	return board
 end	
 
-function get_player_move(cpos,board,input)
-	if (input.btnp_🅾️ or input.btnp_❎)
-	and (board[cpos.x][cpos.y]==nil)	then
+function get_player_move(cpos,board,input,p2_turn)
+	local pressed=t(
+		p2_turn,
+		input.btnp_🅾️2 or input.btnp_❎2
+		input.btnp_🅾️ or input.btnp_❎)
+	if pressed and (board[cpos.x][cpos.y]==nil)	then
 		return cpos
- else
- 	return nil				
+	else
+		return nil
 	end
 end
 
@@ -636,7 +661,9 @@ function update_gs(gs,input)
 		  false,
 		  gs.first_round),
 		t(current_move, current_move, gs.last_move),
-		result
+		result,
+		gs.p2_turn,
+		gs.gametype
 	)
 end
 
