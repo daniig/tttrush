@@ -64,8 +64,10 @@ digit_sprite_base=0x70
 score_lsd_x=2
 score_lsd_y=10
 cursor_dis_color=6
-cursor_a_color=7
-cursor_b_color=14
+cursor_p1_color_a=3
+cursor_p2_color_a=4
+cursor_p1_color_b=11
+cursor_p2_color_b=9
 shadow_brush=5
 x_brush=4
 o_brush=3
@@ -130,7 +132,8 @@ function make_gs(
 	last_move,  -- last move performed, either by ai or human (or cat, etc.)
 	result,		-- game result: "lost" or "timeout"
 	p2_turn,	-- only used on vs 2p games
-	gametype	-- 0: vs cpu, 1: vs 2p
+	gametype,	-- 0: vs cpu, 1: vs 2p
+	cursor_pos_p2
 )
  --rudimentary typechecking
  if type(cursor_pos)!="table" then error=1 end
@@ -156,6 +159,7 @@ function make_gs(
  if type(result)!="string" then error=18 end
  if type(p2_turn)!="boolean" then error=19 end
  if type(gametype)!="number" and (gametype!=vs_cpu or gametype!=vs_p2) then error=20 end
+ if type(cursor_pos_p2)!="table" then error=21 end
  --	
 	return {
 		cursor_pos=cursor_pos,
@@ -176,7 +180,8 @@ function make_gs(
 		last_move=last_move,
 		result=result,
 		p2_turn=p2_turn,
-		gametype=gametype
+		gametype=gametype,
+		cursor_pos_p2=cursor_pos_p2
 	}
 end
 
@@ -184,7 +189,7 @@ function make_init_gs(gametype)
 	local first_phase=t(gametype==vs_cpu,"cpu","player")
 	return 
 		make_gs(
-			{x=0,y=0},
+			{x=1,y=1},
 			make_empty_board(),
 			1,
 			255,
@@ -202,7 +207,8 @@ function make_init_gs(gametype)
 			nil,
 			"",
 			false,
-			gametype
+			gametype,
+			{x=3,y=3}
 		)
 end
 
@@ -345,22 +351,22 @@ corners={
 	{x=1,y=3},{x=3,y=3}
 }
 
-function keys2cursor_pos(input,p2_turn)
-	local l=t(p2_turn,input.btn_⬅️2,input.btn_⬅️)
-	local r=t(p2_turn,input.btn_➡️2,input.btn_➡️)
-	local u=t(p2_turn,input.btn_⬆️2,input.btn_⬆️)
-	local d=t(p2_turn,input.btn_⬇️2,input.btn_⬇️)
+function keys2cursor_pos(input,p2)
+	local l=t(p2,input.btn_⬅️2,input.btn_⬅️)
+	local r=t(p2,input.btn_➡️2,input.btn_➡️)
+	local u=t(p2,input.btn_⬆️2,input.btn_⬆️)
+	local d=t(p2,input.btn_⬇️2,input.btn_⬇️)
 	return {
 		x=t(l, 1, t(r,3,2)),
 		y=t(u, 1, t(d,3,2))
 	}
 end
 
-function get_new_curpos(cp,input,p2_turn)
-	local l=t(p2_turn,input.btnp_⬅️2,input.btnp_⬅️)
-	local r=t(p2_turn,input.btnp_➡️2,input.btnp_➡️)
-	local u=t(p2_turn,input.btnp_⬆️2,input.btnp_⬆️)
-	local d=t(p2_turn,input.btnp_⬇️2,input.btnp_⬇️)
+function get_new_curpos(cp,input,p2)
+	local l=t(p2,input.btnp_⬅️2,input.btnp_⬅️)
+	local r=t(p2,input.btnp_➡️2,input.btnp_➡️)
+	local u=t(p2,input.btnp_⬆️2,input.btnp_⬆️)
+	local d=t(p2,input.btnp_⬇️2,input.btnp_⬇️)
 	local xd=t(l, -1, t(r,1,0))
 	local yd=t(u, -1, t(d,1,0))
 	return {
@@ -601,10 +607,17 @@ end
 function update_gs(gs,input)
 	local n_cpos=
 		t(control_rz,
-		  	keys2cursor_pos(input,gs.p2_turn),
-		  	get_new_curpos(gs.cursor_pos,input,gs.p2_turn))
+		  	keys2cursor_pos(input,false),
+		  	get_new_curpos(gs.cursor_pos,input,false))
+	local n_cpos_p2=
+		t(control_rz,
+			keys2cursor_pos(input,true),
+			get_new_curpos(gs.cursor_pos_p2,input,true))
 	if gs.phase=="player" then
-		current_move=get_player_move(gs.cursor_pos,gs.board,input,gs.p2_turn)
+		current_move=
+			get_player_move(
+				t(gs.p2_turn,gs.cursor_pos_p2,gs.cursor_pos),
+				gs.board,input,gs.p2_turn)
 	elseif (gs.phase=="cpu" and (gs.timer<240 or gs.ptime>60)) then -- a little delay
 		current_move=get_cpu_move(gs.board,gs.diff)
 	else
@@ -676,7 +689,8 @@ function update_gs(gs,input)
 		t(current_move, current_move, gs.last_move),
 		result,
 		t(current_move, not gs.p2_turn, gs.p2_turn),
-		gs.gametype
+		gs.gametype,
+		n_cpos_p2
 	)
 end
 
@@ -925,18 +939,32 @@ function draw_board()
 	end
 end
 
-function draw_cursor(cpos,phase,ptime)
- local color_=
- 	t(phase=="cpu",
- 	  cursor_dis_color,
- 	  t(odd(ptime),
- 	    cursor_a_color,
- 	    cursor_b_color))
- rect2(
-		tile_off_x+(cpos.x-1)*tile_side+cursor_off,
-		tile_off_y+(cpos.y-1)*tile_side+cursor_off,
-		cursor_side,cursor_side,
-		color_)
+function draw_cursor(cpos,phase,ptimec,p2,shrink)
+ 	local color_=
+		t(phase=="cpu",
+			cursor_dis_color,
+			t(odd(ptimec),
+				t(p2,cursor_p2_color_b,cursor_p1_color_a),
+				t(p2,cursor_p2_color_a,cursor_p1_color_b)))
+	local base_x = tile_off_x+(cpos.x-1)*tile_side+cursor_off
+	local base_y = tile_off_y+(cpos.y-1)*tile_side+cursor_off
+	if shrink then
+		rect2(base_x+2,base_y+2,cursor_side-4,cursor_side-4,color_)
+		rect2(base_x+3,base_y+3,cursor_side-6,cursor_side-6,color_)
+	else
+		rect2(base_x,base_y,cursor_side,cursor_side,color_)
+		rect2(base_x+1,base_y+1,cursor_side-2,cursor_side-2,color_)
+	end
+end
+
+function draw_cursors(cpos_p1,cpos_p2,phase,ptimec,gametype)
+	if phase=="cpu" or phase=="player" then
+		draw_cursor(cpos_p1,gs.phase,gs.ptimec,false,false)
+	end
+	if gametype==vs_p2 and phase=="player" then
+		draw_cursor(cpos_p2,gs.phase,gs.ptimec,true,
+			cpos_p1.x==cpos_p2.x and cpos_p1.y==cpos_p2.y)
+	end
 end
 
 -- i,j = position in board
@@ -1383,10 +1411,7 @@ function draw_game(gs)
 	end
 	if not (gs.phase=="recap" and gs.ptime>lost_vanish_dur) then
 		draw_board()
-		if gs.phase=="cpu"
-		or gs.phase=="player" then
-			draw_cursor(gs.cursor_pos,gs.phase,gs.ptimec)
-		end
+		draw_cursors(gs.cursor_pos,gs.cursor_pos_p2,gs.phase,gs.ptimec,gs.gametype)
 		local win_line=t(player_win_line==nil,cpu_win_line,player_win_line)
 		draw_pieces(gs.board,gs.dseed,win_line,gs.ptime)
 		if gs.blinky!=nil then
