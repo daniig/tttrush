@@ -133,7 +133,7 @@ function make_gs(
 	result,		-- game result: "lost" or "timeout"
 	p2_turn,	-- only used on vs 2p games
 	gametype,	-- 0: vs cpu, 1: vs 2p
-	cursor_pos_p2
+	cursor_pos_p2,
 )
  --rudimentary typechecking
  if type(cursor_pos)!="table" then error=1 end
@@ -1081,15 +1081,19 @@ recap_messages={
 	{msg="rank", start_frame=50, x=13, y=79, color={border=8,color_1=7,color_2=7}},
 	{msg="((score2rank(score)))", start_frame=60, x=13, y=95, color={border=8,color_1=7,color_2=12}}}
 	-- note: when changing recap_messages.start_frame, recalculate global "recap_cooldown" 
-function draw_usr_msg(phase,rounds,ptime,last_move,score,result)
+function draw_usr_msg(phase,rounds,ptime,last_move,score,result,gametype)
 	if last_move==nil then
 		last_move={x=1,y=1}
 	end
-	if phase=="lost" then
+	if phase=="lost"
+	or (phase=="won" and gametype==vs_p2) then
+		-- final message before recap
 		local depth=t(	ptime<lost_anim_dur,
 						flr(-3.5*sin(ptime/lost_anim_dur/2)),
 						0)
-		locoprint(	t(result=="timeout","t.out","lost"),
+		locoprint(	t(result=="timeout",
+						"t.out",
+						t(phase=="lost","lost","won")),
 					tile_off_x+(last_move.x-1)*tile_side+5,
 					tile_off_y+(last_move.y-1)*tile_side+10,
 					depth,
@@ -1423,7 +1427,8 @@ function draw_game(gs)
 		draw_score(gs.score)
 	end
 	fillp(0)
-	draw_usr_msg(gs.phase,gs.rounds,gs.ptimec,gs.last_move,gs.score,gs.result)
+	draw_usr_msg(gs.phase,gs.rounds,gs.ptimec,gs.last_move,gs.score,gs.result,
+		gs.gametype)
 end
 
 function _draw()
