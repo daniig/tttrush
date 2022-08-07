@@ -134,6 +134,7 @@ function make_gs(
 	p2_turn,	-- only used on vs 2p games
 	gametype,	-- 0: vs cpu, 1: vs 2p
 	cursor_pos_p2,
+	score_p2
 )
  --rudimentary typechecking
  if type(cursor_pos)!="table" then error=1 end
@@ -160,6 +161,7 @@ function make_gs(
  if type(p2_turn)!="boolean" then error=19 end
  if type(gametype)!="number" and (gametype!=vs_cpu or gametype!=vs_p2) then error=20 end
  if type(cursor_pos_p2)!="table" then error=21 end
+ if type(score_p2)!="number" then error=22 end
  --	
 	return {
 		cursor_pos=cursor_pos,
@@ -181,7 +183,8 @@ function make_gs(
 		result=result,
 		p2_turn=p2_turn,
 		gametype=gametype,
-		cursor_pos_p2=cursor_pos_p2
+		cursor_pos_p2=cursor_pos_p2,
+		score_p2=score_p2
 	}
 end
 
@@ -208,7 +211,8 @@ function make_init_gs(gametype)
 			"",
 			false,
 			gametype,
-			{x=3,y=3}
+			{x=3,y=3},
+			0
 		)
 end
 
@@ -639,11 +643,10 @@ function update_gs(gs,input)
 		 gs.phase=="recap" or
 		 gs.phase=="tie_player" or
 		 gs.phase=="tie_cpu");
-	local score_inc=calc_score_inc(gs.timer)
-	local new_score=
+	local score_inc=
 		t(gs.phase=="player" and current_move!=nil,
-		  gs.score+score_inc,
-		  gs.score)
+			calc_score_inc(gs.timer),
+			0)
 	local new_blinky=
 		t(gs.phase=="player" and current_move!=nil,
 		  make_blinky(current_move,tostr(score_inc),0),
@@ -675,7 +678,7 @@ function update_gs(gs,input)
 		    nil,
 		    next_blinky(gs.blinky)),
 		  new_blinky),
-		new_score,
+		t(gs.p2_turn,gs.score,gs.score+score_inc),
 		t(gs.ptimec&0x02==0x02,
 		  gs.dseed+1,
 		  gs.dseed),
@@ -690,7 +693,8 @@ function update_gs(gs,input)
 		result,
 		t(current_move, not gs.p2_turn, gs.p2_turn),
 		gs.gametype,
-		n_cpos_p2
+		n_cpos_p2,
+		t(gs.p2_turn,gs.score_p2+score_inc,gs.score_p2)
 	)
 end
 
