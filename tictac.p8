@@ -90,7 +90,7 @@ max_cpu_diff=230 -- cpu never gets perfect (that'd be 255)
 sfx_ch = 3
 music_ch_mask = 0b111
 vs_cpu = 0 	-- gametype 0
-vs_2p = 1	-- gametype 1
+vs_p2 = 1	-- gametype 1
 
 function has_value(t,v) -- table,value
  for i,val in ipairs(t) do
@@ -155,7 +155,7 @@ function make_gs(
  if (last_move!=nil and (last_move.x==nil or last_move.y==nil or type(last_move.x)!="number" or type(last_move.y)!="number")) then error=17 end
  if type(result)!="string" then error=18 end
  if type(p2_turn)!="boolean" then error=19 end
- if type(gametype)!="number" and (gametype!=vs_cpu or gametype!=vs_2p) then error=20 end
+ if type(gametype)!="number" and (gametype!=vs_cpu or gametype!=vs_p2) then error=20 end
  --	
 	return {
 		cursor_pos=cursor_pos,
@@ -175,24 +175,25 @@ function make_gs(
 		first_round=first_round,
 		last_move=last_move,
 		result=result,
-		p2_turn=p2_turn
+		p2_turn=p2_turn,
 		gametype=gametype
 	}
 end
 
-function make_init_gs()
+function make_init_gs(gametype)
+	local first_phase=t(gametype==vs_cpu,"cpu","player")
 	return 
 		make_gs(
 			{x=0,y=0},
 			make_empty_board(),
 			1,
 			255,
-			"cpu",
+			first_phase,
 			initial_rate,
 			0,
 			0,
 			0,
-			"cpu",
+			first_phase,
 			nil,
 			0,
 			flr(rnd()*30000),
@@ -201,7 +202,7 @@ function make_init_gs()
 			nil,
 			"",
 			false,
-			vs_2p
+			gametype
 		)
 end
 
@@ -242,7 +243,7 @@ end
 function _init()
 	pal(5, 0x05, 2)
 	poke(0x5f5c, 255) -- make btnp never repeat keypresses
-	gs=make_init_gs()
+	gs=make_init_gs(vs_cpu)
 	ms=make_init_ms()
 end
 
@@ -356,10 +357,10 @@ function keys2cursor_pos(input,p2_turn)
 end
 
 function get_new_curpos(cp,input,p2_turn)
-	local l=t(p2_turn,input.btn_⬅️2,input.btn_⬅️)
-	local r=t(p2_turn,input.btn_➡️2,input.btn_➡️)
-	local u=t(p2_turn,input.btn_⬆️2,input.btn_⬆️)
-	local d=t(p2_turn,input.btn_⬇️2,input.btn_⬇️)
+	local l=t(p2_turn,input.btnp_⬅️2,input.btnp_⬅️)
+	local r=t(p2_turn,input.btnp_➡️2,input.btnp_➡️)
+	local u=t(p2_turn,input.btnp_⬆️2,input.btnp_⬆️)
+	local d=t(p2_turn,input.btnp_⬇️2,input.btnp_⬇️)
 	local xd=t(l, -1, t(r,1,0))
 	local yd=t(u, -1, t(d,1,0))
 	return {
@@ -379,10 +380,10 @@ function board_full(board)
 	return true
 end
 
-
-function put_mark(board,phase,move)
+function put_mark(board,phase,move,p2_turn)
 	if move!=nil then
-		board[move.x][move.y]=t(phase=="player",player_mark,cpu_p2_mark)
+		board[move.x][move.y]=
+			t(phase=="player" and not p2_turn,player_mark,cpu_p2_mark)
 	end	
 	return board
 end	
@@ -497,9 +498,9 @@ function get_cpu_move(board,diff)
 	return nil
 end
 
-function next_phase(phase,moved,timer,new_board,ptime,input,cpu_won,player_won,vs_2p)
+function next_phase(phase,moved,timer,new_board,ptime,input,cpu_won,player_won,gametype)
 	local btn_pressed = input.btnp_🅾️ or input.btnp_❎ or
-		(vs_2p and (input.btnp_🅾️2 or input.btnp_❎2))
+		(gametype==vs_p2 and (input.btnp_🅾️2 or input.btnp_❎2))
  	if phase=="player" then
   		if player_won then 
    			return "won"
@@ -508,7 +509,7 @@ function next_phase(phase,moved,timer,new_board,ptime,input,cpu_won,player_won,v
   		elseif board_full(new_board) then
    			return "tie_player"
   		else
-		 	return t(vs_2p,"player",t(moved,"cpu","player"))
+		 	return t(gametype==vs_p2,"player",t(moved,"cpu","player"))
   		end		
 	elseif phase=="cpu" then
 	 	if cpu_won then
@@ -523,7 +524,7 @@ function next_phase(phase,moved,timer,new_board,ptime,input,cpu_won,player_won,v
 	elseif phase=="recap" then
 		return "recap"
 	elseif phase=="won" then
-		if vs_2p then
+		if gametype==vs_p2 then
 			return t(btn_pressed and ptime>lost_cooldown,"recap","won")
 		else
 			return t(ptime>won_cooldown,"cpu",phase)
@@ -532,7 +533,7 @@ function next_phase(phase,moved,timer,new_board,ptime,input,cpu_won,player_won,v
 		return t(ptime>tie_cooldown,"player",phase)
 	elseif phase=="tie_player" then
 	 	return t(ptime>tie_cooldown,
-			t(vs_2p,"tie_player","cpu"),
+			t(gametype==vs_p2,"player","cpu"),
 			phase)
 	else
 		return phase										 
@@ -600,8 +601,8 @@ end
 function update_gs(gs,input)
 	local n_cpos=
 		t(control_rz,
-		  keys2cursor_pos(input),
-		  get_new_curpos(gs.cursor_pos,input))
+		  	keys2cursor_pos(input,gs.p2_turn),
+		  	get_new_curpos(gs.cursor_pos,input,gs.p2_turn))
 	if gs.phase=="player" then
 		current_move=get_player_move(gs.cursor_pos,gs.board,input,gs.p2_turn)
 	elseif (gs.phase=="cpu" and (gs.timer<240 or gs.ptime>60)) then -- a little delay
@@ -609,7 +610,7 @@ function update_gs(gs,input)
 	else
 		current_move=nil
 	end
-	new_board=put_mark(gs.board,gs.phase,current_move)
+	new_board=put_mark(gs.board,gs.phase,current_move,gs.p2_turn)
 	player_win_line=check_won(new_board,t(gs.p2_turn,cpu_p2_mark,player_mark))
 	cpu_win_line=check_won(new_board,cpu_p2_mark)
 	new_phase=next_phase(
@@ -617,7 +618,7 @@ function update_gs(gs,input)
 		gs.timer,new_board,gs.ptime,
 		input,
 		cpu_win_line!=nil,player_win_line!=nil,
-		gs.vs_2p)
+		gs.gametype)
 	local game_start=(new_phase!=gs.phase) and (gs.phase=="menu" or gs.phase=="lost");
 	local round_restart=
 		(new_phase!=gs.phase) and
@@ -641,6 +642,9 @@ function update_gs(gs,input)
 		result="lost"
 	else
 		result=gs.result
+	end
+	if gs.phase != new_phase then
+		printh(new_phase)
 	end
 	return make_gs(
 		n_cpos,
@@ -671,7 +675,7 @@ function update_gs(gs,input)
 		  gs.first_round),
 		t(current_move, current_move, gs.last_move),
 		result,
-		gs.p2_turn,
+		t(current_move, not gs.p2_turn, gs.p2_turn),
 		gs.gametype
 	)
 end
@@ -724,7 +728,10 @@ function _update()
 	end
  	if old_ms_phase=="main" and ms.phase=="playing" then
 	 	music(0, nil, music_ch_mask)
- 		gs=make_init_gs() 
+ 		gs=make_init_gs(vs_p2)
+		printh("----")
+		printh(gs.gametype)
+		printh(gs.phase)
  	elseif ms.phase=="playing" then
 		gs=update_gs(gs,input)
 		fire_sfx(gs.phase,gs.prev_phase,input,gs.ptime)
@@ -738,11 +745,11 @@ end
 title_phases={"wait", "hilite", "ttt_fade", "rush_in", "moving_up",
 	"full_title"}
 title_phase_durations={
-	["wait"]=30,
-	["hilite"]=23,
-	["ttt_fade"]=15,
-	["rush_in"]=30,
-	["moving_up"]=15,
+	["wait"]=2,--30,
+	["hilite"]=2,--23,
+	["ttt_fade"]=2,--15,
+	["rush_in"]=2,--30,
+	["moving_up"]=2,--15,
 	["full_title"]=-1 -- infinite duration
 }
 default_ptn=0
