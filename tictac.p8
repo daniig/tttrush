@@ -656,11 +656,19 @@ function update_gs(gs,input)
 		result="timeout"
 	elseif gs.phase=="cpu" and cpu_win_line!=nil then
 		result="lost"
+	elseif gs.phase=="player" and player_win_line!=nil then
+		result=t(gs.p2_turn,"p2_won","p1_won")
 	else
 		result=gs.result
 	end
 	if gs.phase != new_phase then
 		printh(new_phase)
+	end
+	new_p1_score = t(gs.p2_turn,gs.score,gs.score+score_inc)
+	new_p2_score = t(gs.p2_turn,gs.score_p2+score_inc,gs.score_p2)
+	if new_phase=="recap" and gs.phase!="recap" then
+		recap_messages=populate_recap_messages(gs.gametype,gs.rounds,new_p1_score,new_p2_score,result=="p1_won")
+		recap_cooldown = recap_messages[#recap_messages].start_frame+20
 	end
 	return make_gs(
 		n_cpos,
@@ -678,7 +686,7 @@ function update_gs(gs,input)
 		    nil,
 		    next_blinky(gs.blinky)),
 		  new_blinky),
-		t(gs.p2_turn,gs.score,gs.score+score_inc),
+		new_p1_score,
 		t(gs.ptimec&0x02==0x02,
 		  gs.dseed+1,
 		  gs.dseed),
@@ -694,7 +702,7 @@ function update_gs(gs,input)
 		t(current_move, not gs.p2_turn, gs.p2_turn),
 		gs.gametype,
 		n_cpos_p2,
-		t(gs.p2_turn,gs.score_p2+score_inc,gs.score_p2)
+		new_p2_score
 	)
 end
 
@@ -1074,17 +1082,31 @@ function score2rank(score)
 	end
 end
 
-lost_anim_dur=60
 recap_msg_dur=10
 recap_msg_depth=3
-recap_messages={
-	{msg="rounds played", start_frame=10, x=13, y=15, color={border=8,color_1=7,color_2=7}},
-	{msg="((rounds))", start_frame=20, x=13, y=31, color={border=8,color_1=7,color_2=12}},
-	{msg="score", start_frame=30, x=13, y=47, color={border=8,color_1=7,color_2=7}},
-	{msg="((t(score<0, \"maximum\", score)))", start_frame=40, x=13, y=63, color={border=8,color_1=7,color_2=12}},
-	{msg="rank", start_frame=50, x=13, y=79, color={border=8,color_1=7,color_2=7}},
-	{msg="((score2rank(score)))", start_frame=60, x=13, y=95, color={border=8,color_1=7,color_2=12}}}
-	-- note: when changing recap_messages.start_frame, recalculate global "recap_cooldown" 
+function populate_recap_messages(gametype,rounds,p1_score,p2_score,p1_won)
+	if gametype == vs_cpu then
+		messages={
+			{msg="rounds played", start_frame=recap_msg_dur, x=13, y=15, color={border=8,color_1=7,color_2=7}},
+			{msg=rounds+1, start_frame=recap_msg_dur*2, x=13, y=31, color={border=8,color_1=7,color_2=12}},
+			{msg="score", start_frame=recap_msg_dur*3, x=13, y=47, color={border=8,color_1=7,color_2=7}},
+			{msg=t(score<0, "maximum", score), start_frame=recap_msg_dur*4, x=13, y=63, color={border=8,color_1=7,color_2=12}},
+			{msg="rank", start_frame=recap_msg_dur*5, x=13, y=79, color={border=8,color_1=7,color_2=7}},
+			{msg=score2rank(p1_score), start_frame=recap_msg_dur*6, x=13, y=95, color={border=8,color_1=7,color_2=12}}}
+	else	--	vs_p2
+		score=t(p1_won,p1_score,p2_score)
+		messages={
+			{msg=t(p1_won,"p1","p2"), start_frame=recap_msg_dur, x=36, y=15, color=t(p1_won,{border=3,color_1=11,color_2=11},{border=4,color_1=9,color_2=9})},
+			{msg="wins", start_frame=recap_msg_dur*2, x=56, y=15, color={border=8,color_1=7,color_2=12}},
+			{msg="rounds played", start_frame=recap_msg_dur*3, x=13, y=39, color={border=8,color_1=7,color_2=7}},
+			{msg=rounds+1, start_frame=recap_msg_dur*4, x=13, y=55, color={border=8,color_1=7,color_2=12}},
+			{msg=t(p1_won,"p1 score","p2 score"), start_frame=recap_msg_dur*5, x=13, y=71, color={border=8,color_1=7,color_2=7}},
+			{msg=score, start_frame=recap_msg_dur*6, x=13, y=87, color={border=8,color_1=7,color_2=12}}}
+	end
+	return messages
+end
+
+lost_anim_dur=60
 function draw_usr_msg(phase,rounds,ptime,last_move,score,result,gametype)
 	if last_move==nil then
 		last_move={x=1,y=1}
@@ -1103,9 +1125,6 @@ function draw_usr_msg(phase,rounds,ptime,last_move,score,result,gametype)
 					depth,
 					{border=8,color_1=7,color_2=12})
 	elseif phase=="recap" then
-		recap_messages[2].msg=rounds
-		recap_messages[4].msg=t(score<0, "maximum", score)
-		recap_messages[6].msg=score2rank(score)
 		for m in all(recap_messages) do
 			if ptime>m.start_frame then
 				locoprint(	m.msg, m.x, m.y,
