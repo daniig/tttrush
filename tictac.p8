@@ -1,5 +1,5 @@
 pico-8 cartridge // http://www.pico-8.com
-version 36
+version 38
 __lua__
 -- tic tac toe rush
 -- (c) 2022 @danisggg
@@ -48,7 +48,7 @@ phases={
 	"player","cpu","lost","init",
 	"tie_cpu","tie_player","won","recap"
 }
-m_phases={"main","playing"} -- menu phases
+m_phases={"title","menu","playing"} -- menu phases
 lost_vanish_dur=40
 lost_cooldown=40
 tie_cooldown=20
@@ -78,6 +78,7 @@ title_brush_1_shadow=60
 title_brush_2_shadow=58
 piece_shadows=true
 max_int=32767
+menu_timeout=10*30
 ai_levelup_indicator_cooldown=30
 ai_levelup_spr=20
 fade_white_to_dark_blue={7,6,13,1}
@@ -222,7 +223,9 @@ function make_ms(
 	ptime,		-- non-cyclic phase timer
 	dseed,		-- drawing rnd seed
 	tscrollx,	-- title scrolling message x coord
-	bgfx		-- background effect
+	bgfx,		-- background effect
+	cur,		-- menu cursor state
+	init_title_ptimec -- ptimec during the transition from title to menu, so that the title logo does not jump from one position to another
 )
 	--rudimentary typechecking
 	if type(phase)!="string" then error=128+5 end
@@ -235,6 +238,8 @@ function make_ms(
 	if type(dseed)!="number" then error=128+9 end
 	if type(tscrollx)!="number" then error=128+10 end
 	if type(bgfx)!="number" then error=128+11 end
+	if type(cur)!="number" then error=128+12 end
+	if type(init_title_ptimec)!="number" then error=128+13 end
 	--	
 	return {
 		phase=phase,
@@ -242,12 +247,14 @@ function make_ms(
 		ptime=ptime,
 		dseed=dseed,
 		tscrollx=tscrollx,
-		bgfx=bgfx
+		bgfx=bgfx,
+		cur=cur,
+		init_title_ptimec=init_title_ptimec
 	}
 end
 
 function make_init_ms()
- 	return make_ms("main",0,0,flr(rnd()*30000),screen_w,0)
+ 	return make_ms("title",0,0,flr(rnd()*30000),screen_w,0,0,0)
 end
 
 function _init()
@@ -707,13 +714,19 @@ function update_gs(gs,input)
 end
 
 function next_m_phase(phase,ms_ptime,btnpressed,return_to_main)
- if phase=="main" then
-  return t(btnpressed and ms_ptime>title_phase_start_times["full_title"],"playing","main")
- elseif phase=="playing" then
-  return t(return_to_main,"main","playing")
- else -- should never get here
-  return make_init_ms()
- end
+	if phase=="title" then
+		return t(btnpressed and ms_ptime>title_phase_start_times["full_title"],"menu","title")
+	elseif phase=="menu" then
+		if ms_ptime > menu_timeout then
+			return "title"
+		else
+			return t(btnpressed and ms_ptime>10, "playing", "menu") -- short cooldown
+		end
+	elseif phase=="playing" then
+		return t(return_to_main,"title","playing")
+	else -- should never get here
+		return make_init_ms()
+	end
 end
 
 function next_tscrollx(tscrollx)
@@ -732,27 +745,35 @@ function update_ms(ms,gs,input)
 		gs.phase=="recap"
 			and gs.ptime>recap_cooldown
 			and (input.btnp_❎ or input.btnp_🅾️))
+	local phase_change = (ms.phase != next_phase)
+	if phase_change then printh(next_phase) end
+	next_cur =
+		t((ms.phase == menu) and (input.btnp_⬆️ or input.btnp_⬇️),
+			 t(ms.cur == 0, 1, 0),
+			 ms.cur)
 	return make_ms(
 		next_phase,
-		next_ptime(ms.ptimec,false,true),
-		next_ptime(ms.ptime,false,false),
+		next_ptime(ms.ptimec,phase_change,true),
+		next_ptime(ms.ptime,phase_change,false),
 		t(ms.ptimec&0x02==0x02,
 		  ms.dseed+1,
 		  ms.dseed),
 		t(title_phase=="full_title",next_tscrollx(ms.tscrollx),ms.tscrollx),
-		t(	ms.phase=="playing" and (next_phase!=ms.phase), -- returning to menu
-			t(ms.bgfx==(number_of_bgfx-1),0,ms.bgfx+1),
-			ms.bgfx))
+		t(ms.phase=="playing" and (next_phase!=ms.phase), -- returning to menu
+		  t(ms.bgfx==(number_of_bgfx-1),0,ms.bgfx+1),
+		  ms.bgfx),
+		ms.cur,
+		t(phase_change and next_phase=="menu", ms.ptimec+1, ms.init_title_ptimec))
 end
 
 function _update()
  	input=make_input()
 	local old_ms_phase=ms.phase
  	ms=update_ms(ms,gs,input)
-	if ms.phase=="main" then
+	if ms.phase=="title" then
 		title_sfx(ms.ptime)
 	end
- 	if old_ms_phase=="main" and ms.phase=="playing" then
+ 	if old_ms_phase=="title" and ms.phase=="playing" then
 	 	music(0, nil, music_ch_mask)
  		gs=make_init_gs(vs_p2)
 		printh("----")
@@ -770,14 +791,26 @@ end
 -- drawing
 title_phases={"wait", "hilite", "ttt_fade", "rush_in", "moving_up",
 	"full_title"}
+
+--[[title_phase_durations={
+	["wait"]=2,
+	["hilite"]=2,
+	["ttt_fade"]=2,
+	["rush_in"]=2,
+	["moving_up"]=2,
+	["full_title"]=-1
+}
+--]]
+
 title_phase_durations={
-	["wait"]=2,--30,
-	["hilite"]=2,--23,
-	["ttt_fade"]=2,--15,
-	["rush_in"]=2,--30,
-	["moving_up"]=2,--15,
+	["wait"]=30,
+	["hilite"]=23,
+	["ttt_fade"]=15,
+	["rush_in"]=30,
+	["moving_up"]=15,
 	["full_title"]=-1 -- infinite duration
 }
+
 default_ptn=0
 checkerboard_ptn=0b1010010110100101
 apply_to_sprites_ptn=0b.01
@@ -1264,7 +1297,7 @@ end
 
 --function print_scrolling(string,ptime,)
 
-function draw_menu(title_phase,ptime,ptimec,dseed,tscrollx)
+function draw_title(title_phase,ptime,ptimec,dseed,tscrollx)
 	assert(title_phase_valid(title_phase))
 	-- setting background color
 	local title_y_off=get_title_y_off(title_phase,ptime)
@@ -1349,18 +1382,6 @@ function draw_menu(title_phase,ptime,ptimec,dseed,tscrollx)
 				screen_w*rnd(),screen_h*0.75*rnd(),1,1,rnd()<0.5,false)
 		end
 		srand(backup_seed)
-	end
-	-- title screen text
-	if title_phase=="full_title" then
-		if (ptimec&0x08==0x08) then
-			hprint("press 🅾️/❎ to start",25,105,9,0)
-		end
-		print(title_scroll_message_str,tscrollx,117,11)
-		-- print a second copy of the message if the first one
-		-- no longer takes up the whole width of the screen
-		if tscrollx < -title_scroll_message_width+screen_w then
-			print(title_scroll_message_str,tscrollx+title_scroll_message_width,117,11)
-		end
 	end
 end
 
@@ -1469,9 +1490,24 @@ function draw_game(gs)
 		gs.gametype)
 end
 
+function draw_title_text(ptimec,tscrollx)
+	if (ptimec&0x08==0x08) then
+		hprint("press 🅾️/❎ to start",25,105,9,0)
+	end
+	print(title_scroll_message_str,tscrollx,117,11)
+	-- print a second copy of the message if the first one
+	-- no longer takes up the whole width of the screen
+	if tscrollx < -title_scroll_message_width+screen_w then
+		print(title_scroll_message_str,tscrollx+title_scroll_message_width,117,11)
+	end
+end
+
 function _draw()
-	if ms.phase=="main" then
-		draw_menu(title_phase,ms.ptime,ms.ptimec,ms.dseed,ms.tscrollx)
+	if ms.phase=="title" then
+		draw_title(title_phase,ms.ptime,ms.ptimec,ms.dseed,ms.tscrollx)
+		if title_phase == "full_title" then draw_title_text(ms.ptimec,ms.tscrollx) end
+	elseif ms.phase=="menu" then
+		draw_title("full_title",ms.ptime+ms.init_title_ptimec,ms.ptimec+ms.init_title_ptimec,ms.dseed,ms.tscrollx)
 	elseif ms.phase=="playing" then
 		draw_game(gs)
 		--draw_info(gs.diff,gs.rate,gs.score)
