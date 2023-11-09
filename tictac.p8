@@ -747,8 +747,8 @@ function update_ms(ms,gs,input)
 			and (input.btnp_❎ or input.btnp_🅾️))
 	local phase_change = (ms.phase != next_phase)
 	if phase_change then printh(next_phase) end
-	next_cur =
-		t((ms.phase == menu) and (input.btnp_⬆️ or input.btnp_⬇️),
+	local next_cur =
+		t((ms.phase == "menu") and (input.btnp_⬆️ or input.btnp_⬇️),
 			 t(ms.cur == 0, 1, 0),
 			 ms.cur)
 	return make_ms(
@@ -762,7 +762,7 @@ function update_ms(ms,gs,input)
 		t(ms.phase=="playing" and (next_phase!=ms.phase), -- returning to menu
 		  t(ms.bgfx==(number_of_bgfx-1),0,ms.bgfx+1),
 		  ms.bgfx),
-		ms.cur,
+		next_cur,
 		t(phase_change and next_phase=="menu", ms.ptimec+1, ms.init_title_ptimec))
 end
 
@@ -1502,12 +1502,20 @@ function draw_title_text(ptimec,tscrollx)
 	end
 end
 
+function draw_menu(cur,ptimec)
+	local hi_color = t(ptimec&0x02 == 0x02, 9, 7)
+	hprint("p1 vs cpu",50,105,t(cur==0,hi_color,9),0)
+	hprint("p1 vs p2",50,113,t(cur==1,hi_color,9),0)
+	hprint("➡️",40,t(cur==0,105,113),7,9)
+end
+
 function _draw()
 	if ms.phase=="title" then
 		draw_title(title_phase,ms.ptime,ms.ptimec,ms.dseed,ms.tscrollx)
 		if title_phase == "full_title" then draw_title_text(ms.ptimec,ms.tscrollx) end
 	elseif ms.phase=="menu" then
 		draw_title("full_title",ms.ptime+ms.init_title_ptimec,ms.ptimec+ms.init_title_ptimec,ms.dseed,ms.tscrollx)
+		draw_menu(ms.cur,ms.ptimec)
 	elseif ms.phase=="playing" then
 		draw_game(gs)
 		--draw_info(gs.diff,gs.rate,gs.score)
