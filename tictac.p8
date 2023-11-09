@@ -19,7 +19,6 @@ new_board=nil
 player_win_line=nil
 cpu_win_line=nil
 new_phase=nil
-title_phase=nil
 -- constants
 tile_side=33
 screen_side=128
@@ -78,7 +77,7 @@ title_brush_1_shadow=60
 title_brush_2_shadow=58
 piece_shadows=true
 max_int=32767
-menu_timeout=10*30
+menu_timeout=60*30
 ai_levelup_indicator_cooldown=30
 ai_levelup_spr=20
 fade_white_to_dark_blue={7,6,13,1}
@@ -738,7 +737,7 @@ function next_tscrollx(tscrollx)
 end
 
 function update_ms(ms,gs,input)
-	title_phase = get_title_phase(ms.ptime)
+	local title_phase = get_title_phase(ms.ptime)
  	local btnpressed=input.btnp_❎ or input.btnp_🅾️
  	local next_phase=next_m_phase(
 		ms.phase,
@@ -1513,6 +1512,7 @@ end
 
 function _draw()
 	if ms.phase=="title" then
+		local title_phase = get_title_phase(ms.ptime)
 		draw_title(title_phase,ms.ptime,ms.ptimec,ms.dseed,ms.tscrollx)
 		if title_phase == "full_title" then draw_title_text(ms.ptimec,ms.tscrollx) end
 	elseif ms.phase=="menu" then
