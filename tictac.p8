@@ -706,7 +706,9 @@ function update_gs(gs,input)
 		  gs.first_round),
 		t(current_move, current_move, gs.last_move),
 		result,
-		t(current_move, not gs.p2_turn, gs.p2_turn),
+		t(gs.gametype==vs_cpu,
+			false,
+			t(current_move, not gs.p2_turn, gs.p2_turn)),
 		gs.gametype,
 		n_cpos_p2,
 		new_p2_score
@@ -773,9 +775,9 @@ function _update()
 	if ms.phase=="title" then
 		title_sfx(ms.ptime)
 	end
- 	if old_ms_phase=="title" and ms.phase=="playing" then
+ 	if old_ms_phase=="menu" and ms.phase=="playing" then
 	 	music(0, nil, music_ch_mask)
- 		gs=make_init_gs(vs_p2)
+ 		gs=make_init_gs(t(ms.cur==0,vs_cpu,vs_p2))
 		printh("----")
 		printh(gs.gametype)
 		printh(gs.phase)
@@ -1123,7 +1125,7 @@ function populate_recap_messages(gametype,rounds,p1_score,p2_score,p1_won)
 			{msg="rounds played", start_frame=recap_msg_dur, x=13, y=15, color={border=8,color_1=7,color_2=7}},
 			{msg=rounds+1, start_frame=recap_msg_dur*2, x=13, y=31, color={border=8,color_1=7,color_2=12}},
 			{msg="score", start_frame=recap_msg_dur*3, x=13, y=47, color={border=8,color_1=7,color_2=7}},
-			{msg=t(score<0, "maximum", score), start_frame=recap_msg_dur*4, x=13, y=63, color={border=8,color_1=7,color_2=12}},
+			{msg=t(p1_score<0, "maximum", p1_score), start_frame=recap_msg_dur*4, x=13, y=63, color={border=8,color_1=7,color_2=12}},
 			{msg="rank", start_frame=recap_msg_dur*5, x=13, y=79, color={border=8,color_1=7,color_2=7}},
 			{msg=score2rank(p1_score), start_frame=recap_msg_dur*6, x=13, y=95, color={border=8,color_1=7,color_2=12}}}
 	else	--	vs_p2
@@ -1134,7 +1136,7 @@ function populate_recap_messages(gametype,rounds,p1_score,p2_score,p1_won)
 			{msg="rounds played", start_frame=recap_msg_dur*3, x=13, y=39, color={border=8,color_1=7,color_2=7}},
 			{msg=rounds+1, start_frame=recap_msg_dur*4, x=13, y=55, color={border=8,color_1=7,color_2=12}},
 			{msg=t(p1_won,"p1 score","p2 score"), start_frame=recap_msg_dur*5, x=13, y=71, color={border=8,color_1=7,color_2=7}},
-			{msg=score, start_frame=recap_msg_dur*6, x=13, y=87, color={border=8,color_1=7,color_2=12}}}
+			{msg=t(p1_won,p1_score,p2_score), start_frame=recap_msg_dur*6, x=13, y=87, color={border=8,color_1=7,color_2=12}}}
 	end
 	return messages
 end
@@ -1506,7 +1508,7 @@ function draw_menu(cur,ptimec)
 	local hi_color = t(ptimec&0x02 == 0x02, 9, 7)
 	hprint("p1 vs cpu",50,105,t(cur==0,hi_color,9),0)
 	hprint("p1 vs p2",50,113,t(cur==1,hi_color,9),0)
-	hprint("➡️",40,t(cur==0,105,113),7,9)
+	hprint("➡️",40,t(cur==0,105,113),9,0)
 end
 
 function _draw()
